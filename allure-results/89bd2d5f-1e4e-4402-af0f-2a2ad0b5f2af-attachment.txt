@@ -1,0 +1,15 @@
+Screenshot saved: screenshots/salereturn_01_Login_20260523_214819.png
+Screenshot saved: screenshots/salereturn_02_Menu_20260523_214826.png
+Screenshot saved: screenshots/salereturn_03_Customer_20260523_214831.png
+✅ Return type 'Without Reference' selected and Go! clicked
+Screenshot saved: screenshots/salereturn_04_Type_20260523_214856.png
+✅ First product row clicked
+Screenshot saved: screenshots/salereturn_05_Product_20260523_214900.png
+✅ Qty entered: 1
+Screenshot saved: screenshots/salereturn_06_Qty_20260523_214906.png
+Screenshot saved: screenshots/salereturn_07_Calculated_20260523_214917.png
+Screenshot saved: screenshots/salereturn_08_Saved_20260523_214923.png
+Screenshot saved: screenshots/salereturn_09_Receive_20260523_214928.png
+Screenshot saved: screenshots/salereturn_10_Confirmed_20260523_214934.png
+✅ Received successfully!
+Screenshot saved: screenshots/salereturn_11_Done_20260523_214941.png

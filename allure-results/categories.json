@@ -1,0 +1,20 @@
+[
+  {
+    "name": "UI Failures",
+    "matchedStatuses": ["failed"],
+    "messageRegex": ".*TimeoutException.*"
+  },
+  {
+    "name": "Login Failures",
+    "matchedStatuses": ["failed"],
+    "messageRegex": ".*login.*"
+  },
+  {
+    "name": "Test Defects",
+    "matchedStatuses": ["broken"]
+  },
+  {
+    "name": "Passed Tests",
+    "matchedStatuses": ["passed"]
+  }
+]
