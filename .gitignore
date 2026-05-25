@@ -1,0 +1,18 @@
+# Python
+.venv/
+__pycache__/
+*.pyc
+.deepeval/
+.idea/
+
+# Test outputs
+allure-results/
+allure-resultscls/
+allure-report/
+screenshots/
+reports/
+logs/
+
+# Environment
+.env
+.env.local
