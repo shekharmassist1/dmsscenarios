@@ -1,6 +1,7 @@
 import os
 import allure
 from datetime import datetime
+import time
 
 def take_screenshot(driver, step_name, folder="screenshots"):
     os.makedirs(folder, exist_ok=True)
@@ -17,3 +18,11 @@ def take_screenshot(driver, step_name, folder="screenshots"):
         )
     print(f"Screenshot saved: {file_name}")
     return file_name
+def navigate_dashboard(driver):
+    driver.get(
+        "https://admin.massistcrm.com/DMSPages/Dashboard.html"
+    )
+    time.sleep(3)
+
+
+

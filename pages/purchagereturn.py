@@ -4,20 +4,20 @@ from selenium.webdriver.support import expected_conditions as EC
 from config.config import EXPLICIT_WAIT
 import time
 
-class SaleReturnPage:
+class purchageReturnPage:
     def __init__(self, driver):
         self.driver = driver
         self.wait = WebDriverWait(driver, EXPLICIT_WAIT)
 
-    def navigate_to_sale_return(self):
+    def navigate_to_purchage_return(self):
         menu = self.wait.until(EC.element_to_be_clickable((
-            By.XPATH, "//span[contains(text(),'Sale Return')]"
+            By.XPATH, "//span[@class='hide_txt'][normalize-space()='Purchase Return']"
         )))
         menu.click()
 
-    def search_customer(self, customer_name):
+    def search_customer(self):
         search_input = self.wait.until(EC.element_to_be_clickable((By.XPATH, "//input[@type='search']")))
-        search_input.send_keys("Demo 4")
+        search_input.send_keys("vel")
 
     def select_customer(self, customer_name):
         select_btn = self.wait.until(EC.visibility_of_element_located((
@@ -27,19 +27,22 @@ class SaleReturnPage:
         select_btn.click()
         time.sleep(10)
 
-    def select_return_type(self, return_type="Without Reference"):
-        dropdown = self.wait.until(EC.presence_of_element_located((
-            By.ID, "ddlBillFor"
-        )))
-        Select(dropdown).select_by_visible_text(return_type)
+    def hamburger(self):
+        hamburger_btn = self.wait.until(EC.element_to_be_clickable((By.XPATH, "//span[contains(@class,'ShowBatchWiseVariant')]")))
+        hamburger_btn.click()
 
-
-
-        go_btn = self.wait.until(EC.element_to_be_clickable((
-            By.XPATH, "//button[normalize-space()='Go!']"
-        )))
-        go_btn.click()
-        print(f"✅ Return type '{return_type}' selected and Go! clicked")
+        inventory_value = WebDriverWait(self.driver, 25).until(
+            EC.presence_of_element_located((
+                By.XPATH,
+                "//table//td[contains(@class,'Inventory') or "
+                "contains(@class,'inventory')]//span | "
+                "//table//td[preceding-sibling::td[contains(text(),'Inventory')]]"
+            ))
+        )
+        print(f"Inventory: {inventory_value.text}")
+        close_btn = self.wait.until(EC.element_to_be_clickable((By.XPATH, "//div[@class='jconfirm-closeIcon']")))
+        close_btn.click()
+        return inventory_value.text
 
     def select_first_product(self):
         # Wait for slow API to load table
@@ -57,12 +60,13 @@ class SaleReturnPage:
     def enter_qty(self, qty="1"):
         qty_input = WebDriverWait(self.driver, 60).until(
             EC.element_to_be_clickable((
-                By.CSS_SELECTOR, "input.clsNumberOnly.C1"
+                By.CSS_SELECTOR, "input.clsNumberOnly.C2"
             ))
         )
         qty_input.clear()
         qty_input.send_keys(qty)
         print(f"✅ Qty entered: {qty}")
+        time.sleep(3)
 
     def click_calculate(self):
         calculate = self.wait.until(EC.element_to_be_clickable((
@@ -76,21 +80,20 @@ class SaleReturnPage:
         )))
         save_btn.click()
 
-    def click_product_receive(self):
-        product_rcv = self.wait.until(EC.element_to_be_clickable((
-            By.ID, "btnProductsRecieve"
+    def click_place_return(self):
+        place_return = self.wait.until(EC.element_to_be_clickable((
+            By.ID, "btnPlaceReturn"
         )))
-        product_rcv.click()
+        place_return.click()
 
-    def confirm_order(self):
+    def confirm_return(self):
         confirm_btn = self.wait.until(EC.element_to_be_clickable((
             By.XPATH, "//button[contains(text(),'Yes! Proceed.')]"
         )))
         confirm_btn.click()
 
     def click_ok(self):
-        ok_btn = self.wait.until(EC.element_to_be_clickable((
-            By.XPATH, "//button[normalize-space()='OK']"
-        )))
-        ok_btn.click()
-        print("✅ Received successfully!")
+        alert =self.wait.until(EC.element_to_be_clickable((By.XPATH, "//button[normalize-space()='OK']")))
+        alert.click()
+        time.sleep(5)
+
