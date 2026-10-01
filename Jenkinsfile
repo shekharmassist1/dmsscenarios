@@ -1,6 +1,10 @@
 pipeline {
     agent any
 
+    environment {
+        PYTHON = 'C:\\Users\\Asus\\AppData\\Local\\Programs\\Python\\Python312\\python.exe'
+    }
+
     stages {
         stage('Checkout') {
             steps {
@@ -9,8 +13,8 @@ pipeline {
         }
         stage('Setup Python') {
             steps {
-                bat 'python -m venv venv'
-                bat 'venv\\Scripts\\pip install --upgrade pip'
+                bat '"%PYTHON%" -m venv venv'
+                bat 'venv\\Scripts\\python.exe -m pip install --upgrade pip'
                 bat 'venv\\Scripts\\pip install -r requirements.txt'
             }
         }
