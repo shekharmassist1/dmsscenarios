@@ -21,14 +21,21 @@ pipeline {
         }
         stage('Run Tests') {
             steps {
-                bat 'venv\\Scripts\\pytest tests -v -n 3 --junitxml=results.xml --html=report.html --self-contained-html --alluredir=allure-results'
+                bat 'venv\\Scripts\\pytest tests -v -n 2 --junitxml=results.xml --html=report.html --self-contained-html --alluredir=allure-results'
             }
         }
     }
     post {
         always {
             junit 'results.xml'
-            allure includeProperties: false, jdk: '', results: [[path: 'allure-results']]
+
+            script {
+                try {
+                    allure includeProperties: false, jdk: '', results: [[path: 'allure-results']]
+                } catch (e) {
+                    echo "Allure step skipped (plugin not installed yet): ${e.message}"
+                }
+            }
 
             script {
                 def testResultAction = currentBuild.testResultAction
@@ -53,8 +60,7 @@ pipeline {
                                 <tr style="background:#f5f5f5;"><td style="padding:8px; font-weight:bold;">Pass Rate</td><td style="padding:8px;">${passRate}%</td></tr>
                             </table>
                             <p>
-                                <a href="${env.BUILD_URL}" style="color:#1565c0;">View Build in Jenkins</a><br/>
-                                <a href="${env.BUILD_URL}allure" style="color:#1565c0;">View Full Allure Dashboard</a>
+                                <a href="${env.BUILD_URL}" style="color:#1565c0;">View Build in Jenkins</a>
                             </p>
                             <p style="color:#777; font-size:13px;">Full HTML report and JUnit results are attached for detailed review.</p>
                         </div>
