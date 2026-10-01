@@ -2,7 +2,7 @@ from openpyxl import load_workbook
 import pandas as pd
 
 def get_login_data():
-    wb = load_workbook("data/login_data.xlsx")
+    wb = load_workbook("testdata/login_data.xlsx")
     sheet = wb.active
 
     data = []
