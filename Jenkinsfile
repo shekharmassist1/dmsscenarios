@@ -32,7 +32,7 @@ pipeline {
             script {
                 try {
                     allure includeProperties: false, jdk: '', results: [[path: 'allure-results']]
-                } catch (e) {
+                } catch (Throwable e) {
                     echo "Allure step skipped (plugin not installed yet): ${e.message}"
                 }
             }
