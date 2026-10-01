@@ -21,7 +21,7 @@ pipeline {
         }
         stage('Run Tests') {
             steps {
-                bat 'venv\\Scripts\\pytest tests -v --junitxml=results.xml --html=report.html --self-contained-html'
+                bat 'venv\\Scripts\\pytest tests -v -n 3 --junitxml=results.xml --html=report.html --self-contained-html'
             }
         }
     }
