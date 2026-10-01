@@ -26,7 +26,7 @@ class BillValidations:
                 f"Selected Items Failed: Expected={expected_count}, Actual={actual_count}"
             )
         else:
-            print(f"✓ Selected Items={actual_count}")
+            print("✓ Selected Items={actual_count}")
 
 
 

@@ -38,7 +38,7 @@ class MySalePage:
         rows = self.driver.find_elements(*self.TABLE_ROWS)
         print(f"📋 Total rows: {len(rows)}")
 
-        # ── Debug: pehli row ke saare columns print karo ──
+
         if rows:
             all_cols = rows[0].find_elements(By.TAG_NAME, "td")
             for idx, col in enumerate(all_cols):
@@ -54,7 +54,7 @@ class MySalePage:
                 invoice_full = cols[3].text.strip()
                 order_id = invoice_full.split("/")[0].strip()
 
-                # ── Sahi index — debug output dekh ke confirm karo ──
+
                 order_data = {
                     "order_id": order_id,
                     "invoice_id": invoice_full,
