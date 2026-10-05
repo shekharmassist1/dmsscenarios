@@ -3,28 +3,31 @@ pipeline {
 
     environment {
         PYTHON = 'C:\\Users\\Asus\\AppData\\Local\\Programs\\Python\\Python312\\python.exe'
-        WDM_OFFLINE = 'true'
     }
 
     stages {
-        stage('Checkout') {
-            steps {
-                checkout scm
-            }
-        }
         stage('Setup Python') {
             steps {
-                bat '"%PYTHON%" -m venv venv'
-                bat 'venv\\Scripts\\python.exe -m pip install --upgrade pip'
-                bat 'venv\\Scripts\\pip install -r requirements.txt'
+                dir('seleniumdms') {
+                    bat '"%PYTHON%" -m venv venv'
+                    bat 'venv\\Scripts\\python.exe -m pip install --upgrade pip'
+                    bat 'venv\\Scripts\\pip install -r requirements.txt'
+                }
             }
         }
         stage('Run Tests') {
             steps {
-                bat 'if exist results.xml del results.xml'
-                bat 'if exist report.html del report.html'
-                bat 'if exist allure-results rmdir /s /q allure-results'
-                bat 'venv\\Scripts\\pytest tests -v -n 2 --junitxml=results.xml --html=report.html --self-contained-html --alluredir=allure-results'
+                dir('seleniumdms') {
+                    bat 'if exist results.xml del results.xml'
+                    bat 'if exist report.html del report.html'
+                    bat 'if exist allure-results rmdir /s /q allure-results'
+                    withCredentials([
+                        usernamePassword(credentialsId: 'dms-db',    usernameVariable: 'DB_USER',      passwordVariable: 'DB_PASSWORD'),
+                        usernamePassword(credentialsId: 'dms-login', usernameVariable: 'DMS_USERNAME', passwordVariable: 'DMS_PASSWORD')
+                    ]) {
+                        bat 'venv\\Scripts\\pytest tests -v -n 2 --junitxml=results.xml --html=report.html --self-contained-html --alluredir=allure-results'
+                    }
+                }
             }
         }
     }
@@ -32,15 +35,16 @@ pipeline {
     post {
         always {
             script {
-                def testResults = junit 'results.xml'
+                def testResults = junit 'seleniumdms/results.xml'
 
                 try {
-                    allure commandline: 'allure', includeProperties: false, jdk: '', results: [[path: 'allure-results']]
+                    allure commandline: 'allure', includeProperties: false, jdk: '', results: [[path: 'seleniumdms/allure-results']]
                 } catch (Throwable e) {
                     echo "Allure report not generated: ${e.message}"
                 }
-                bat 'if exist test-reports.zip del test-reports.zip'
-                def zipStatus = bat(returnStatus: true, script: 'powershell -Command "Compress-Archive -Path report.html,results.xml -DestinationPath test-reports.zip -Force"')
+
+                bat 'if exist seleniumdms\\test-reports.zip del seleniumdms\\test-reports.zip'
+                def zipStatus = bat(returnStatus: true, script: 'powershell -Command "Compress-Archive -Path seleniumdms\\report.html,seleniumdms\\results.xml -DestinationPath seleniumdms\\test-reports.zip -Force"')
                 if (zipStatus != 0) {
                     echo "Could not create test-reports.zip, sending email without attachment"
                 }
@@ -57,7 +61,7 @@ pipeline {
                     body: """
                         <div style="font-family: Arial, sans-serif; max-width: 600px;">
                             <h2 style="color: ${statusColor}; margin-bottom: 4px;">Build ${env.BUILD_NUMBER}: ${currentBuild.currentResult}</h2>
-                            <p style="color: #555; margin-top:0;">DMS Selenium Test Suite &mdash; ${env.JOB_NAME}</p>
+                            <p style="color: #555; margin-top:0;">DMS Selenium Scenarios &mdash; ${env.JOB_NAME}</p>
                             <table style="border-collapse: collapse; width: 100%; margin: 16px 0;">
                                 <tr style="background:#f5f5f5;"><td style="padding:8px; font-weight:bold;">Total Tests</td><td style="padding:8px;">${total}</td></tr>
                                 <tr><td style="padding:8px; font-weight:bold; color:#2e7d32;">Passed</td><td style="padding:8px;">${passed}</td></tr>
@@ -65,15 +69,13 @@ pipeline {
                                 <tr><td style="padding:8px; font-weight:bold; color:#f9a825;">Skipped</td><td style="padding:8px;">${skipped}</td></tr>
                                 <tr style="background:#f5f5f5;"><td style="padding:8px; font-weight:bold;">Pass Rate</td><td style="padding:8px;">${passRate}%</td></tr>
                             </table>
-                            <p>
-                                <a href="${env.BUILD_URL}" style="color:#1565c0;">View Build in Jenkins</a>
-                            </p>
+                            <p><a href="${env.BUILD_URL}" style="color:#1565c0;">View Build in Jenkins</a></p>
                             <p style="color:#777; font-size:13px;">Full HTML report and JUnit results are attached as test-reports.zip.</p>
                         </div>
                     """,
                     mimeType: 'text/html',
                     to: 'shekhar@massistcrm.com',
-                    attachmentsPattern: 'test-reports.zip'
+                    attachmentsPattern: 'seleniumdms/test-reports.zip'
                 )
             }
         }
