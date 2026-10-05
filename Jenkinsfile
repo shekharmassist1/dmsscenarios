@@ -35,9 +35,9 @@ pipeline {
                 def testResults = junit 'results.xml'
 
                 try {
-                    allure includeProperties: false, jdk: '', results: [[path: 'allure-results']]
+                    allure commandline: 'allure', includeProperties: false, jdk: '', results: [[path: 'allure-results']]
                 } catch (Throwable e) {
-                    echo "Allure step skipped (plugin not installed yet): ${e.message}"
+                    echo "Allure report not generated: ${e.message}"
                 }
 
                 def total = testResults ? testResults.totalCount : 0
