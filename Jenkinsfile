@@ -39,6 +39,11 @@ pipeline {
                 } catch (Throwable e) {
                     echo "Allure report not generated: ${e.message}"
                 }
+                bat 'if exist test-reports.zip del test-reports.zip'
+                def zipStatus = bat(returnStatus: true, script: 'powershell -Command "Compress-Archive -Path report.html,results.xml -DestinationPath test-reports.zip -Force"')
+                if (zipStatus != 0) {
+                    echo "Could not create test-reports.zip, sending email without attachment"
+                }
 
                 def total = testResults ? testResults.totalCount : 0
                 def failed = testResults ? testResults.failCount : 0
@@ -63,12 +68,12 @@ pipeline {
                             <p>
                                 <a href="${env.BUILD_URL}" style="color:#1565c0;">View Build in Jenkins</a>
                             </p>
-                            <p style="color:#777; font-size:13px;">Full HTML report and JUnit results are attached for detailed review.</p>
+                            <p style="color:#777; font-size:13px;">Full HTML report and JUnit results are attached as test-reports.zip.</p>
                         </div>
                     """,
                     mimeType: 'text/html',
                     to: 'shekhar@massistcrm.com',
-                    attachmentsPattern: 'report.html,results.xml'
+                    attachmentsPattern: 'test-reports.zip'
                 )
             }
         }
