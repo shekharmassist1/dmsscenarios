@@ -25,23 +25,21 @@ pipeline {
             }
         }
     }
+
     post {
         always {
-            junit 'results.xml'
-
             script {
+                def testResults = junit 'results.xml'
+
                 try {
                     allure includeProperties: false, jdk: '', results: [[path: 'allure-results']]
-                } catch (e) {
+                } catch (Throwable e) {
                     echo "Allure step skipped (plugin not installed yet): ${e.message}"
                 }
-            }
 
-            script {
-                def testResultAction = currentBuild.testResultAction
-                def total = testResultAction ? testResultAction.totalCount : 0
-                def failed = testResultAction ? testResultAction.failCount : 0
-                def skipped = testResultAction ? testResultAction.skipCount : 0
+                def total = testResults ? testResults.totalCount : 0
+                def failed = testResults ? testResults.failCount : 0
+                def skipped = testResults ? testResults.skipCount : 0
                 def passed = total - failed - skipped
                 def passRate = total > 0 ? String.format("%.1f", (passed / (float) total) * 100) : "N/A"
                 def statusColor = currentBuild.currentResult == 'SUCCESS' ? '#2e7d32' : '#c62828'
