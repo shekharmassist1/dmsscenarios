@@ -20,13 +20,14 @@ pipeline {
             }
         }
         stage('Run Tests') {
-    steps {
-        bat 'if exist results.xml del results.xml'
-        bat 'if exist report.html del report.html'
-        bat 'if exist allure-results rmdir /s /q allure-results'
-        bat 'venv\\Scripts\\pytest tests -v -n 2 --junitxml=results.xml --html=report.html --self-contained-html --alluredir=allure-results'
+            steps {
+                bat 'if exist results.xml del results.xml'
+                bat 'if exist report.html del report.html'
+                bat 'if exist allure-results rmdir /s /q allure-results'
+                bat 'venv\\Scripts\\pytest tests -v -n 2 --junitxml=results.xml --html=report.html --self-contained-html --alluredir=allure-results'
+            }
+        }
     }
-}
 
     post {
         always {
