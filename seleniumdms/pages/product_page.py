@@ -1,12 +1,19 @@
 import re
 import time
-
+from selenium.common.exceptions import TimeoutException
 from selenium.common.exceptions import StaleElementReferenceException
-from selenium.webdriver.common.by import By
+
 from selenium.webdriver.common.keys import Keys
-from selenium.webdriver.support import expected_conditions as EC
+
+
 from pages.base_page import BasePage
 from utilities.performance import attach_page_performance
+from selenium.webdriver.support import expected_conditions as EC
+from selenium.webdriver.common.by import By
+from selenium.webdriver.support.ui import Select, WebDriverWait
+
+
+
 
 
 def _parse_float(text):
@@ -139,18 +146,42 @@ class ProductPage(BasePage):
     # blocking "Product not exists!" alert in that case rather than loading the grid).
     FALLBACK_CUSTOMER = "Demo Dealer 4"
 
+    def _customer_table(self):
+        """Return (search_input, table_wrapper) for the visible customer table only."""
+
+        def _visible_search(d):
+            for el in d.find_elements(*self.CUSTOMER_SEARCH_INPUT):
+                if el.is_displayed():
+                    return el
+            return False
+
+        search = self.wait_until(_visible_search, message="Customer search box never became visible")
+        wrapper = search.find_element(By.XPATH, "./ancestor::div[contains(@class,'dataTables_wrapper')]")
+        return search, wrapper
+
     def _select_customer_once(self, name):
-        search = self.find(self.CUSTOMER_SEARCH_INPUT)
+        search, wrapper = self._customer_table()
         search.clear()
         search.send_keys(name)
-        row = self.wait_until(
-            EC.presence_of_element_located(self._customer_row_locator(name)),
-            message=f"Customer row for '{name}' never appeared in the search results",
-        )
-        select_btn = row.find_element(
-            By.XPATH, ".//button[contains(text(),'Select')] | .//a[contains(text(),'Select')]"
-        )
-        self.js_click(select_btn)
+        time.sleep(1)  # let the table filter
+
+        row_xpath = f".//tbody/tr[td[normalize-space(.)='{name}']]"
+        for _ in range(20):  # up to 20 pages
+            rows = wrapper.find_elements(By.XPATH, row_xpath)
+            if rows:
+                select_btn = rows[0].find_element(
+                    By.XPATH,
+                    ".//a[contains(normalize-space(.),'Select')] | .//button[contains(normalize-space(.),'Select')]",
+                )
+                self.js_click(select_btn)
+                return
+            next_btn = wrapper.find_elements(By.CSS_SELECTOR, ".paginate_button.next")
+            if not next_btn or "disabled" in (next_btn[0].get_attribute("class") or ""):
+                break
+            self.js_click(next_btn[0])
+            time.sleep(1)  # let the next page render
+
+        raise TimeoutException(f"Customer row for '{name}' never appeared in the search results")
 
     def select_customer(self, name):
         self._select_customer_once(name)

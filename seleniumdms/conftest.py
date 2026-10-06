@@ -12,6 +12,7 @@ from utilities.soft_assert import SoftAssert
 
 def _build_driver():
     headless = os.environ.get("HEADLESS", "false").strip().lower() not in ("false", "0", "no")
+
     options = webdriver.ChromeOptions()
     if headless:
         options.add_argument("--headless=new")
@@ -20,8 +21,9 @@ def _build_driver():
     options.add_argument("--disable-dev-shm-usage")
     options.add_argument("--window-size=1920,1080")
     options.add_argument("--start-maximized")
+    options.page_load_strategy = "eager"
     driver = webdriver.Chrome(options=options)
-    driver.set_page_load_timeout(30)
+    driver.set_page_load_timeout(120)
     return driver
 
 
