@@ -2,7 +2,9 @@ pipeline {
     agent any
 
     environment {
-        PYTHON = 'C:\\Users\\Asus\\AppData\\Local\\Programs\\Python\\Python312\\python.exe'
+        PYTHON    = 'C:\\Users\\Asus\\AppData\\Local\\Programs\\Python\\Python312\\python.exe'
+        DB_SERVER = '172.31.62.165'
+        DB_NAME   = 'Ma_Live'
     }
 
     stages {
