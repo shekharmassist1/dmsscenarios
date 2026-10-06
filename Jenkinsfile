@@ -72,7 +72,7 @@ pipeline {
                         </div>
                     """,
                     mimeType: 'text/html',
-                    to: 'shekhar@massistcrm.com',
+                    to: '$DEFAULT_RECIPIENTS',
                     attachmentsPattern: 'test-reports.zip'
                 )
             }
