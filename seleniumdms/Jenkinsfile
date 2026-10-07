@@ -5,6 +5,7 @@ pipeline {
         PYTHON    = 'C:\\Users\\Asus\\AppData\\Local\\Programs\\Python\\Python312\\python.exe'
         DB_SERVER = '172.31.62.165'
         DB_NAME   = 'Ma_Live'
+        HEADLESS  = 'true'
     }
 
     stages {
@@ -27,7 +28,7 @@ pipeline {
                         usernamePassword(credentialsId: 'dms-db',    usernameVariable: 'DB_USER',      passwordVariable: 'DB_PASSWORD'),
                         usernamePassword(credentialsId: 'dms-login', usernameVariable: 'DMS_USERNAME', passwordVariable: 'DMS_PASSWORD')
                     ]) {
-                        bat 'venv\\Scripts\\pytest tests -v -n 2 --junitxml=results.xml --html=report.html --self-contained-html --alluredir=allure-results'
+                        bat 'venv\\Scripts\\pytest tests -v -n 1 --junitxml=results.xml --html=report.html --self-contained-html --alluredir=allure-results'
                     }
                 }
             }

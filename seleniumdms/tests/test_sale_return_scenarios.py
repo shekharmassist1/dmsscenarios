@@ -66,20 +66,36 @@ def _pick_rows_with_checked_inventory(page, count, exclude_variant_ids=()):
     return picked, checked_info
 
 
-def _create_fresh_sale_for_return(driver):
-    """Creates a small, real sale for CUSTOMER_NAME via the (untouched) Sale/Bill module, purely so
-    Scenario 2 has a guaranteed-fresh, never-yet-returned invoice to reference. Confirmed live: the
-    'With Reference' invoice picker only lists invoices that haven't already been fully returned, and
-    this shared demo account's pool of returnable invoices gets depleted by repeated test runs
-    ("There is no invoice left for this client on selected dates.") -- creating one immediately
-    before referencing it sidesteps that entirely."""
+def _newest_reference_invoice(driver, min_items=0):
+    """Newest invoice for CUSTOMER_NAME currently offered by the 'With Reference' picker whose item
+    count is > min_items, or None if there isn't one (an empty picker no longer crashes the test)."""
+    page = SaleReturnPage(driver)
+    page.open()
+    page.select_customer(CUSTOMER_NAME)
+    try:
+        page.choose_with_reference_and_go(customer_name=CUSTOMER_NAME)
+    except Exception:
+        return None  # picker shows no returnable invoices at all
+    invoices = page.get_reference_invoices(limit=20)
+    qualifying = [i for i in invoices if int(_to_float(i["noofitem"] or "0")) > min_items]
+    return qualifying[0] if qualifying else None
+
+
+def _create_fresh_sale_for_return(driver, item_count=2):
+    """Creates a small, real sale for CUSTOMER_NAME via the Sale/Bill module so the 'With Reference'
+    scenarios always have a fresh, never-returned invoice to reference. Confirmed live: the picker
+    only lists invoices that haven't already been fully returned, and this shared demo account's
+    pool gets depleted by repeated test runs.
+
+    Products are chosen by LIVE stock (the old version always used the first rows, so an
+    out-of-stock product was silently dropped and a '4-item' sale was saved with 3 items). The new
+    order is then found through the 'With Reference' picker, so this also works when the database
+    is unreachable; the database is only used as a fallback."""
     sale_page = ProductPage(driver)
     sale_page.open()
     sale_page.select_customer(CUSTOMER_NAME)
-    entered = 0
-    for i in range(2):
-        sale_page.enter_quantity(i, 1)
-        entered += 1
+    for row_idx in sale_page.pick_rows_with_stock(item_count, min_qty=1):
+        sale_page.enter_quantity(row_idx, 1)
     sale_page.click_calc()
     sale_page.click_save()
     sale_page.click_add_sale()
@@ -87,53 +103,31 @@ def _create_fresh_sale_for_return(driver):
     sale_page.wait_for_sale_completed()
     sale_page.dismiss_post_sale_print_preview()
     time.sleep(1.5)
+
+    invoice = _newest_reference_invoice(driver, min_items=item_count - 1)
+    if invoice is not None:
+        return invoice["order_id"]
     order = get_latest_order_for_client(CUSTOMER_NAME)
     return order["Order_Id"]
 
 
 def _pick_or_create_reference_order_id(driver):
-    """Prefers referencing the newest invoice already available for CUSTOMER_NAME in the 'With
-    Reference' picker -- only falls back to creating a fresh sale (see _create_fresh_sale_for_return)
-    if none are available, since the picker only lists invoices not already fully returned and this
-    shared demo account's pool can run dry from repeated test runs. Returns (order_id, was_created)."""
-    peek_page = SaleReturnPage(driver)
-    peek_page.open()
-    peek_page.select_customer(CUSTOMER_NAME)
-    peek_page.choose_with_reference_and_go(customer_name=CUSTOMER_NAME)
-    invoices = peek_page.get_reference_invoices(limit=1)
-    if invoices:
-        return invoices[0]["order_id"], False
-    return _create_fresh_sale_for_return(driver), True
+    """Prefers the newest invoice already available for CUSTOMER_NAME in the 'With Reference'
+    picker; only creates a fresh sale if none is available. Returns (order_id, was_created)."""
+    invoice = _newest_reference_invoice(driver, min_items=0)
+    if invoice is not None:
+        return invoice["order_id"], False
+    return _create_fresh_sale_for_return(driver, item_count=2), True
 
 
 def _pick_or_create_reference_order_id_over_n_items(driver, min_items):
-    """Same 'prefer existing, else create' pattern as _pick_or_create_reference_order_id, but only
-    accepts an invoice whose item count is strictly greater than min_items -- falls back to creating
-    a fresh sale with min_items + 1 distinct products (via the untouched Sale/Bill module) if no
-    already-available invoice qualifies. Returns (order_id, was_created)."""
-    peek_page = SaleReturnPage(driver)
-    peek_page.open()
-    peek_page.select_customer(CUSTOMER_NAME)
-    peek_page.choose_with_reference_and_go(customer_name=CUSTOMER_NAME)
-    invoices = peek_page.get_reference_invoices(limit=20)
-    qualifying = [i for i in invoices if int(i["noofitem"]) > min_items]
-    if qualifying:
-        return qualifying[0]["order_id"], False
-
-    sale_page = ProductPage(driver)
-    sale_page.open()
-    sale_page.select_customer(CUSTOMER_NAME)
-    for i in range(min_items + 1):
-        sale_page.enter_quantity(i, 1)
-    sale_page.click_calc()
-    sale_page.click_save()
-    sale_page.click_add_sale()
-    sale_page.confirm_sale_proceed()
-    sale_page.wait_for_sale_completed()
-    sale_page.dismiss_post_sale_print_preview()
-    time.sleep(1.5)
-    order = get_latest_order_for_client(CUSTOMER_NAME)
-    return order["Order_Id"], True
+    """Same 'prefer existing, else create' pattern, but only accepts an invoice with MORE than
+    min_items items; otherwise creates a fresh sale with min_items + 1 in-stock products.
+    Returns (order_id, was_created)."""
+    invoice = _newest_reference_invoice(driver, min_items=min_items)
+    if invoice is not None:
+        return invoice["order_id"], False
+    return _create_fresh_sale_for_return(driver, item_count=min_items + 1), True
 
 
 @allure.epic("Sale Return")
@@ -654,7 +648,7 @@ def test_scenario6_two_items_hamburger_checked_repeated_print(logged_in_driver, 
         # class of defect.
         results = []
         for attempt in range(1, 4):
-            success, error_text = page.click_print_or_detect_error(timeout=15)
+            success, error_text = page.click_print_or_detect_error()
             allure.attach(
                 f"attempt={attempt} success={success} error={error_text!r}",
                 name=f"print_attempt_{attempt}", attachment_type=allure.attachment_type.TEXT,

@@ -1,10 +1,8 @@
 import re
 import time
-from selenium.common.exceptions import TimeoutException
-from selenium.common.exceptions import StaleElementReferenceException
 
+from selenium.common.exceptions import StaleElementReferenceException, TimeoutException
 from selenium.webdriver.common.keys import Keys
-
 
 from pages.base_page import BasePage
 from utilities.performance import attach_page_performance
@@ -13,11 +11,11 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import Select, WebDriverWait
 
 
-
-
-
 def _parse_float(text):
-    match = re.search(r"[\d.]+", text)
+    """Parse the first number in `text`, keeping a leading minus sign and ignoring thousands commas
+    (e.g. '-12 Carton' -> -12.0, '1,234.50' -> 1234.5). The previous version dropped the minus sign,
+    so products with NEGATIVE stock were read as having plenty of stock."""
+    match = re.search(r"-?\d+(?:\.\d+)?", (text or "").replace(",", ""))
     return float(match.group()) if match else 0.0
 
 
@@ -138,17 +136,15 @@ class ProductPage(BasePage):
     def get_visible_product_row_count(self):
         return len(self.find_all(self.PRODUCT_ROWS))
 
-    @staticmethod
-    def _customer_row_locator(name):
-        return (By.XPATH, f"//td[normalize-space(text())='{name}']/parent::tr")
+    # ------------------------------------------------------------------ customer selection
 
     # Fallback customer to try if the primary one has no products assigned (the app shows a
     # blocking "Product not exists!" alert in that case rather than loading the grid).
     FALLBACK_CUSTOMER = "Demo Dealer 4"
 
     def _customer_table(self):
-        """Return (search_input, table_wrapper) for the visible customer table only."""
-
+        """Return (search_input, table_wrapper) for the visible customer table only -- the page also
+        holds a hidden product table with its own search/Show controls that must not be used here."""
         def _visible_search(d):
             for el in d.find_elements(*self.CUSTOMER_SEARCH_INPUT):
                 if el.is_displayed():
@@ -159,12 +155,49 @@ class ProductPage(BasePage):
         wrapper = search.find_element(By.XPATH, "./ancestor::div[contains(@class,'dataTables_wrapper')]")
         return search, wrapper
 
+    @staticmethod
+    def _wait_table_settled(wrapper, timeout=10):
+        """Wait until the table's 'Showing X To Y Of Z Entries' text stops changing -- i.e. the
+        search filter / page change / page-length change has finished redrawing. A fixed sleep was
+        sometimes too short, so the test looked at the table before the filter had been applied."""
+        end = time.time() + timeout
+        last, stable = None, 0
+        while time.time() < end:
+            try:
+                text = wrapper.find_element(By.CSS_SELECTOR, ".dataTables_info").text
+            except Exception:
+                text = ""
+            if text == last:
+                stable += 1
+                if stable >= 3:  # unchanged for ~1 second
+                    return
+            else:
+                last, stable = text, 0
+            time.sleep(0.3)
+
     def _select_customer_once(self, name):
+        """The customer search matches each word separately across all columns (so 'Demo Dealer 4'
+        also returns 'Demo Dealer 11' etc. and can push the wanted customer onto page 2). So:
+        1) switch THIS table's Show dropdown to All, 2) search, 3) look for an EXACT name match,
+        and only as a fallback click Next page by page until it is found."""
         search, wrapper = self._customer_table()
+
+        # 1) Show all customers on one page (scoped to the customer table only).
+        try:
+            length_select = wrapper.find_elements(By.CSS_SELECTOR, "select[name$='_length']") or \
+                wrapper.find_elements(By.CSS_SELECTOR, ".dataTables_length select")
+            if length_select:
+                Select(length_select[0]).select_by_value("-1")
+                self._wait_table_settled(wrapper)
+        except Exception as exc:
+            print(f"Could not switch customer list to 'All' (will page through instead): {exc}")
+
+        # 2) Search, and wait for the filter to finish.
         search.clear()
         search.send_keys(name)
-        time.sleep(1)  # let the table filter
+        self._wait_table_settled(wrapper)
 
+        # 3) Exact match on the current page, else click Next and try again.
         row_xpath = f".//tbody/tr[td[normalize-space(.)='{name}']]"
         for _ in range(20):  # up to 20 pages
             rows = wrapper.find_elements(By.XPATH, row_xpath)
@@ -178,8 +211,10 @@ class ProductPage(BasePage):
             next_btn = wrapper.find_elements(By.CSS_SELECTOR, ".paginate_button.next")
             if not next_btn or "disabled" in (next_btn[0].get_attribute("class") or ""):
                 break
-            self.js_click(next_btn[0])
-            time.sleep(1)  # let the next page render
+            # With Bootstrap-styled tables the click handler sits on the inner <a>, not the <li>.
+            target = next_btn[0].find_elements(By.TAG_NAME, "a") or [next_btn[0]]
+            self.js_click(target[0])
+            self._wait_table_settled(wrapper)
 
         raise TimeoutException(f"Customer row for '{name}' never appeared in the search results")
 
@@ -201,6 +236,8 @@ class ProductPage(BasePage):
             message=f"Product grid never loaded after selecting customer '{name}'",
         )
         return self
+
+    # ------------------------------------------------------------------ product grid
 
     def product_row(self, index):
         # The product grid can re-render mid-read (e.g. a live stock/price refresh) -- this makes
@@ -240,6 +277,44 @@ class ProductPage(BasePage):
                 last_exc = exc
                 time.sleep(0.5)
         raise last_exc
+
+    def show_all_products(self):
+        """Switch the product grid's 'Show' dropdown to All so every product row is in the page."""
+        try:
+            table = self.driver.find_element(By.ID, "productlist")
+            wrapper = table.find_element(By.XPATH, "./ancestor::div[contains(@class,'dataTables_wrapper')]")
+            Select(wrapper.find_element(By.CSS_SELECTOR, "select")).select_by_value("-1")
+            time.sleep(2)  # let the grid redraw
+        except Exception as exc:
+            print(f"Could not switch product grid to 'All': {exc}")
+
+    def pick_rows_with_stock(self, count, min_qty=1):
+        """Return the indexes of `count` product rows that each have at least `min_qty` in stock.
+
+        Stock on this shared demo account changes with every test run (sales reduce it, some products
+        go negative), so tests must choose products by their LIVE stock instead of always using the
+        first N rows -- otherwise the app rejects them with 'Insufficient inventory' and drops them."""
+        def _scan():
+            picked = []
+            for i in range(len(self.find_all(self.PRODUCT_ROWS))):
+                try:
+                    if self.product_row(i)["available_stock"] >= min_qty:
+                        picked.append(i)
+                        if len(picked) == count:
+                            break
+                except Exception:
+                    continue
+            return picked
+
+        picked = _scan()
+        if len(picked) < count:
+            self.show_all_products()
+            picked = _scan()
+        if len(picked) < count:
+            raise AssertionError(
+                f"Only {len(picked)} products have at least {min_qty} in stock; need {count}"
+            )
+        return picked
 
     def get_scheme_tiers(self, row_index):
         """Opens the row's 'Scheme Details' popup (via its gift icon -- confirmed live this needs a
@@ -361,7 +436,7 @@ class ProductPage(BasePage):
 
     def enter_insufficient_quantity(self, row_index, buffer=25):
         info = self.product_row(row_index)
-        qty = int(info["available_stock"]) + buffer
+        qty = max(0, int(info["available_stock"])) + buffer
         return self.enter_quantity(row_index, qty), qty
 
     def dismiss_one_alert(self, timeout=3):
@@ -423,16 +498,36 @@ class ProductPage(BasePage):
             "total_scheme": self.text_of(self.SUMMARY_TOTAL_SCHEME),
         }
 
-    def search_product(self, text):
+    def search_product(self, text, timeout=15):
+        """Type into the product search and return the INDEX of the row whose product name matches
+        `text`. The old version only waited for 'any rows', which is already true before the search
+        filters -- so the test grabbed whatever product happened to be first (e.g. Malai Paneer Cube
+        instead of Aam Chaska Falala Candy)."""
         box = self.find(self.PRODUCT_SEARCH_INPUT)
         box.clear()
         box.send_keys(text)
-        self.wait_until(
-            lambda d: len(d.find_elements(*self.PRODUCT_ROWS)) > 0,
-            timeout=15,
-            message=f"No product rows appeared after searching for '{text}'",
-        )
-        return self
+        needle = re.sub(r"\s+", "", text).lower()
+
+        def _matching_index(d):
+            for idx, row in enumerate(d.find_elements(*self.PRODUCT_ROWS)):
+                try:
+                    name = row.find_element(By.CSS_SELECTOR, "span.Variant_Name").get_attribute("product_name") or ""
+                except Exception:
+                    continue
+                if needle in re.sub(r"\s+", "", name).lower():
+                    return idx + 1  # +1 so a match on row 0 isn't treated as "not found"
+            return False
+
+        try:
+            found = self.wait_until(_matching_index, timeout=max(1, timeout // 2), message="")
+        except Exception:
+            box.send_keys(Keys.ENTER)  # some grids only filter on Enter
+            found = self.wait_until(
+                _matching_index,
+                timeout=timeout,
+                message=f"No product row matching '{text}' appeared after searching",
+            )
+        return found - 1
 
     def open_view_selected_items(self):
         self.click(self.VIEW_SELECTED_BUTTON)
@@ -572,12 +667,48 @@ class ProductPage(BasePage):
         self.driver.find_element(By.TAG_NAME, "body").send_keys(Keys.ESCAPE)
         return self
 
+    def _visible_dialog_text(self):
+        """Text of any visible jconfirm dialog -- used to explain WHY a step was blocked."""
+        texts = []
+        for box in self.driver.find_elements(By.CSS_SELECTOR, ".jconfirm-box"):
+            try:
+                if box.is_displayed() and box.text.strip():
+                    texts.append(box.text.strip().replace("\n", " | "))
+            except Exception:
+                continue
+        return " || ".join(texts)
+
     def click_add_sale(self):
-        self.click(self.ADD_SALE_BUTTON)
-        self.wait_until(
-            EC.visibility_of_element_located(self.CONFIRM_SALE_TITLE),
-            message="'Confirm Sale?' dialog never appeared after clicking Add Sale",
-        )
+        """Add Sale (#btnCart) sometimes failed with 'never became clickable': Selenium's clickable
+        check fails if anything overlaps the button (a leftover alert, the save panel still animating).
+        Dismiss leftover alerts, wait until the button is simply visible, then JS-click it. If the
+        'Confirm Sale?' dialog still doesn't appear, the error now includes whatever dialog is blocking."""
+        self.dismiss_any_alert(timeout=2)
+
+        def _visible_button(d):
+            for b in d.find_elements(*self.ADD_SALE_BUTTON):
+                try:
+                    if b.is_displayed():
+                        return b
+                except StaleElementReferenceException:
+                    continue
+            return False
+
+        btn = self.wait_until(_visible_button, timeout=30, message="Add Sale button (#btnCart) never became visible")
+        self.driver.execute_script("arguments[0].scrollIntoView({block:'center'});", btn)
+        self.js_click(btn)
+        try:
+            self.wait_until(
+                EC.visibility_of_element_located(self.CONFIRM_SALE_TITLE),
+                timeout=20,
+                message="'Confirm Sale?' dialog never appeared after clicking Add Sale",
+            )
+        except Exception:
+            blocking = self._visible_dialog_text()
+            raise TimeoutException(
+                "'Confirm Sale?' dialog never appeared after clicking Add Sale"
+                + (f" -- visible dialog instead: {blocking}" if blocking else "")
+            )
         return self
 
     def get_confirm_sale_details(self):

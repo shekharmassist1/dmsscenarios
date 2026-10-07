@@ -61,13 +61,35 @@ def _verify_order_against_database(soft_assert, client_name, expected_item_count
     return order
 
 
+def _attach_rows_used(rows):
+    allure.attach(
+        f"Product grid rows used (chosen by live stock): {rows}",
+        name="rows_with_stock",
+        attachment_type=allure.attachment_type.TEXT,
+    )
+
+
+def _my_sales_baseline(driver):
+    """Invoice id of the newest My Sales row for CUSTOMER_NAME BEFORE this test makes its sale.
+    After the sale, the test only accepts a My Sales row with a DIFFERENT invoice id -- so it can't
+    pick up an older sale (e.g. one made by a previous test) by mistake."""
+    try:
+        return MySalePage(driver).open().get_latest_invoice_id(CUSTOMER_NAME)
+    except Exception:
+        return None
+
+
 def _enter_items_with_one_insufficient(page, soft_assert, total_items, insufficient_index, valid_qty=1):
+    # Choose rows by LIVE stock so the "valid" items really are valid -- stock on this shared demo
+    # account drops with every test sale and some products go negative.
+    rows = page.pick_rows_with_stock(total_items, min_qty=valid_qty)
+    _attach_rows_used(rows)
     entered = {}
-    for i in range(total_items):
-        if i == insufficient_index:
-            code, _qty = page.enter_insufficient_quantity(i)
+    for position, row_idx in enumerate(rows):
+        if position == insufficient_index:
+            code, _qty = page.enter_insufficient_quantity(row_idx)
         else:
-            code = page.enter_quantity(i, valid_qty)
+            code = page.enter_quantity(row_idx, valid_qty)
         entered[code] = True
     soft_assert.check_true(
         len(entered) == total_items,
@@ -253,10 +275,12 @@ def test_scenario2_four_items_calc_then_save_draft(logged_in_driver, soft_assert
             return
 
     entered = {}
-    with step(page, "Enter 4 valid items"):
+    with step(page, "Pick 4 products with enough stock and enter qty 2 each"):
         try:
-            for i in range(4):
-                code = page.enter_quantity(i, 2)
+            rows = page.pick_rows_with_stock(4, min_qty=2)
+            _attach_rows_used(rows)
+            for row_idx in rows:
+                code = page.enter_quantity(row_idx, 2)
                 entered[code] = True
             soft_assert.check_true(
                 len(entered) == 4, f"Expected 4 distinct product rows entered, got {len(entered)}"
@@ -337,14 +361,17 @@ def test_scenario5_correct_insufficient_item_then_check_item_count(logged_in_dri
     entered = {}
     with step(page, "Enter 5 items; push the 5th over its available stock, then correct it back to a valid qty"):
         try:
-            for i in range(5):
-                code = page.enter_quantity(i, 1)
+            rows = page.pick_rows_with_stock(5, min_qty=1)
+            _attach_rows_used(rows)
+            for row_idx in rows:
+                code = page.enter_quantity(row_idx, 1)
                 entered[code] = True
-            page.enter_insufficient_quantity(4)
+            last_row = rows[-1]
+            page.enter_insufficient_quantity(last_row)
             page.dismiss_any_alert()
-            available = page.get_available_stock(4)
+            available = page.get_available_stock(last_row)
             valid_qty = max(1, int(available))
-            corrected_code = page.enter_quantity(4, valid_qty)
+            corrected_code = page.enter_quantity(last_row, valid_qty)
             entered[corrected_code] = True
             soft_assert.check_true(
                 len(entered) == 5, f"Expected 5 distinct product rows entered, got {len(entered)}"
@@ -371,11 +398,13 @@ def test_scenario7_select_all_override_then_save_draft_and_order_again(logged_in
             return
 
     product_ids = {}
-    with step(page, "Enter 4 in each of two product rows"):
+    with step(page, "Enter 4 in each of two product rows (chosen by live stock)"):
         try:
-            for i in range(2):
-                info = page.product_row(i)
-                page.enter_quantity(i, 4)
+            rows = page.pick_rows_with_stock(2, min_qty=4)
+            _attach_rows_used(rows)
+            for row_idx in rows:
+                info = page.product_row(row_idx)
+                page.enter_quantity(row_idx, 4)
                 product_ids[info["product_id"]] = info["item_code"]
             soft_assert.check_true(
                 len(product_ids) == 2, f"Expected 2 distinct products entered with qty 4, got {len(product_ids)}"
@@ -418,11 +447,13 @@ def test_scenario8_seven_random_valid_items_full_flow_add_sale(logged_in_driver,
     entered = {}
     with step(page, "Enter 7 items with random valid quantities (1-7, within available stock)"):
         try:
-            for i in range(7):
-                available = page.get_available_stock(i)
+            rows = page.pick_rows_with_stock(7, min_qty=1)
+            _attach_rows_used(rows)
+            for row_idx in rows:
+                available = page.get_available_stock(row_idx)
                 max_qty = max(1, min(7, int(available)))
                 qty = random.randint(1, max_qty)
-                code = page.enter_quantity(i, qty)
+                code = page.enter_quantity(row_idx, qty)
                 entered[code] = qty
             allure.attach(str(entered), name="entered_codes_and_qty", attachment_type=allure.attachment_type.TEXT)
             soft_assert.check_true(
@@ -558,10 +589,12 @@ def test_scenario9_five_items_discount_add_sale_verify_invoice(logged_in_driver,
             return
 
     entered = {}
-    with step(page, "Enter 5 items"):
+    with step(page, "Pick 5 products with stock and enter qty 1 each"):
         try:
-            for i in range(5):
-                code = page.enter_quantity(i, 1)
+            rows = page.pick_rows_with_stock(5, min_qty=1)
+            _attach_rows_used(rows)
+            for row_idx in rows:
+                code = page.enter_quantity(row_idx, 1)
                 entered[code] = True
             soft_assert.check_true(
                 len(entered) == 5, f"Expected 5 distinct product rows entered, got {len(entered)}"
@@ -681,6 +714,11 @@ def test_scenario9_five_items_discount_add_sale_verify_invoice(logged_in_driver,
     "Scenario 10: 5 items (fixed qty 2,1,4,1,1) -> Calc -> Save -> Add Sale -> Proceed -> verify on My Sales"
 )
 def test_scenario10_five_fixed_qty_items_verify_my_sale(logged_in_driver, soft_assert):
+    with allure.step("Note the newest My Sales invoice for this customer BEFORE the sale"):
+        baseline_invoice = _my_sales_baseline(logged_in_driver)
+        allure.attach(str(baseline_invoice), name="my_sales_baseline_invoice",
+                      attachment_type=allure.attachment_type.TEXT)
+
     page = ProductPage(logged_in_driver)
     with step(page, f"Open product page and select customer '{CUSTOMER_NAME}'"):
         try:
@@ -691,26 +729,14 @@ def test_scenario10_five_fixed_qty_items_verify_my_sale(logged_in_driver, soft_a
             return
 
     requested_quantities = [2, 1, 4, 1, 1]
-    planned_quantities = []
-    for i, requested_qty in enumerate(requested_quantities):
-        available = page.get_available_stock(i)
-        planned_quantities.append(min(requested_qty, max(1, int(available))))
-
     entered = {}
-    with step(
-        page,
-        f"Enter quantities {planned_quantities} into 5 product rows "
-        f"(requested {requested_quantities}, clamped to live stock)",
-    ):
+    with step(page, f"Pick 5 products with enough stock and enter quantities {requested_quantities}"):
         try:
-            for i, qty in enumerate(planned_quantities):
-                code = page.enter_quantity(i, qty)
+            rows = page.pick_rows_with_stock(len(requested_quantities), min_qty=max(requested_quantities))
+            _attach_rows_used(rows)
+            for row_idx, qty in zip(rows, requested_quantities):
+                code = page.enter_quantity(row_idx, qty)
                 entered[code] = qty
-            allure.attach(
-                f"Requested: {requested_quantities} | Actually entered (clamped to live stock): {planned_quantities}",
-                name="requested_vs_actual_quantities",
-                attachment_type=allure.attachment_type.TEXT,
-            )
             soft_assert.check_true(
                 len(entered) == 5, f"Expected 5 distinct product rows entered, got {len(entered)}"
             )
@@ -772,7 +798,7 @@ def test_scenario10_five_fixed_qty_items_verify_my_sale(logged_in_driver, soft_a
         try:
             my_sale_page = MySalePage(logged_in_driver)
             my_sale_page.open()
-            latest_sale = my_sale_page.get_latest_sale_for_client(CUSTOMER_NAME)
+            latest_sale = my_sale_page.get_latest_sale_for_client(CUSTOMER_NAME, exclude_invoice_ids={baseline_invoice})
             allure.attach(
                 page.driver.get_screenshot_as_png(),
                 name="My Sales - screenshot",
@@ -810,6 +836,11 @@ def test_scenario10_five_fixed_qty_items_verify_my_sale(logged_in_driver, soft_a
     "Update Sale -> Proceed -> Print -> verify invoice"
 )
 def test_scenario11_three_items_edit_and_verify_invoice(logged_in_driver, soft_assert):
+    with allure.step("Note the newest My Sales invoice for this customer BEFORE the sale"):
+        baseline_invoice = _my_sales_baseline(logged_in_driver)
+        allure.attach(str(baseline_invoice), name="my_sales_baseline_invoice",
+                      attachment_type=allure.attachment_type.TEXT)
+
     page = ProductPage(logged_in_driver)
     with step(page, f"Open product page and select customer '{CUSTOMER_NAME}'"):
         try:
@@ -820,10 +851,12 @@ def test_scenario11_three_items_edit_and_verify_invoice(logged_in_driver, soft_a
             return
 
     entered = {}
-    with step(page, "Enter 3 items"):
+    with step(page, "Pick 3 products with stock and enter qty 1 each"):
         try:
-            for i in range(3):
-                code = page.enter_quantity(i, 1)
+            rows = page.pick_rows_with_stock(3, min_qty=1)
+            _attach_rows_used(rows)
+            for row_idx in rows:
+                code = page.enter_quantity(row_idx, 1)
                 entered[code] = True
             soft_assert.check_true(
                 len(entered) == 3, f"Expected 3 distinct product rows entered, got {len(entered)}"
@@ -868,18 +901,20 @@ def test_scenario11_three_items_edit_and_verify_invoice(logged_in_driver, soft_a
             return
 
     my_sale_page = MySalePage(logged_in_driver)
+    sale_invoice = None
     with allure.step("Verify the finalized sale on the My Sales report"):
         try:
             my_sale_page.open()
-            latest_sale = my_sale_page.get_latest_sale_for_client(CUSTOMER_NAME)
+            latest_sale = my_sale_page.get_latest_sale_for_client(CUSTOMER_NAME, exclude_invoice_ids={baseline_invoice})
             allure.attach(
                 my_sale_page.driver.get_screenshot_as_png(),
                 name="My Sales - screenshot",
                 attachment_type=allure.attachment_type.PNG,
             )
             allure.attach(str(latest_sale), name="My Sales - latest row", attachment_type=allure.attachment_type.TEXT)
-            soft_assert.check_true(latest_sale is not None, "A sale row for 'Demo Dealer 4' should exist on My Sales")
+            soft_assert.check_true(latest_sale is not None, "A NEW sale row for 'Demo Dealer 4' should exist on My Sales")
             if latest_sale is not None:
+                sale_invoice = latest_sale["invoice_id"]
                 soft_assert.check_equal(
                     latest_sale["no_of_items"], str(len(entered)), "My Sales: No. Of Items vs entered"
                 )
@@ -891,7 +926,7 @@ def test_scenario11_three_items_edit_and_verify_invoice(logged_in_driver, soft_a
     edit_items = None
     with allure.step("Click Edit and verify Calc + View Selected Items on the Edit Sale page"):
         try:
-            my_sale_page.click_edit_for_client(CUSTOMER_NAME)
+            my_sale_page.click_edit_for_client(CUSTOMER_NAME, invoice_id=sale_invoice)
             edit_page = ProductPage(logged_in_driver)
             edit_page.click_calc()
             edit_summary = edit_page.get_summary()
@@ -936,7 +971,7 @@ def test_scenario11_three_items_edit_and_verify_invoice(logged_in_driver, soft_a
     with allure.step("Print the invoice from My Sales and verify its item count/total"):
         try:
             my_sale_page.open()
-            invoice_url, invoice_screenshot = my_sale_page.print_invoice_for_client(CUSTOMER_NAME)
+            invoice_url, invoice_screenshot = my_sale_page.print_invoice_for_client(CUSTOMER_NAME, invoice_id=sale_invoice)
             allure.attach(
                 invoice_screenshot, name="Invoice - screenshot", attachment_type=allure.attachment_type.PNG
             )
@@ -979,18 +1014,39 @@ def test_scenario12_scheme_products_combined_threshold_add_sale(logged_in_driver
             soft_assert.check(False, f"Setup failed: {exc}")
             return
 
-    product_a_qty = 5
     info_a = None
     amount_a = None
-    with step(page, "Search and enter Product A (Aam Chaska Falala Candy) below the scheme threshold"):
+    tier1_min = None
+    tier1_max = None
+    bonus_name = ""
+    with step(page, "Search Product A (Aam Chaska Falala Candy) and read the scheme's CURRENT tier-1 range"):
         try:
-            page.search_product("Aam Chaska Falala Candy [1*10]")
-            info_a = page.product_row(0)
+            idx_a = page.search_product("Aam Chaska Falala Candy [1*10]")
+            info_a = page.product_row(idx_a)
             soft_assert.check_true(
-                "1*10" in info_a["display_name"], f"Expected the [1*10] variant, got {info_a['display_name']!r}"
+                "1*10" in info_a["display_name"].replace(" ", ""),
+                f"Expected the [1*10] variant, got {info_a['display_name']!r}",
             )
             soft_assert.check_true(info_a["scheme_id"] is not None, "Product A should carry a scheme tag")
-            page.enter_quantity(0, product_a_qty)
+            # Schemes on this app are reassigned over time (tier ranges and bonus product change), so read
+            # them live from the Scheme Details popup instead of trusting hardcoded values.
+            tiers = page.get_scheme_tiers(idx_a)
+            allure.attach(str(tiers), name="scheme_tiers_read_live", attachment_type=allure.attachment_type.TEXT)
+            if not tiers:
+                soft_assert.check(False, "Scheme Details popup should list at least one tier")
+                return
+            tier1_min, tier1_max = tiers[0]["min"], tiers[0]["max"]
+            bonus_name = tiers[0]["product_name"]
+            bonus_key = bonus_name.lower().split("[")[0].strip()
+        except Exception as exc:
+            soft_assert.check(False, f"Reading Product A / scheme tiers failed: {exc}")
+            return
+
+    with step(page, "Enter Product A below the scheme threshold on its own"):
+        try:
+            # Enough to contribute, but stay under the tier-1 minimum on its own.
+            product_a_qty = max(1, min(5, int((tier1_min * 0.5) / info_a["price"]))) if info_a["price"] else 1
+            page.enter_quantity(idx_a, product_a_qty)
             amount_a = info_a["price"] * product_a_qty
             allure.attach(
                 f"Product A: {info_a['display_name']} | price/carton={info_a['price']} | qty={product_a_qty} | "
@@ -999,9 +1055,9 @@ def test_scenario12_scheme_products_combined_threshold_add_sale(logged_in_driver
                 attachment_type=allure.attachment_type.TEXT,
             )
             soft_assert.check_true(
-                amount_a < SCHEME_TIER1_MIN,
+                amount_a < tier1_min,
                 f"Product A's own line amount ({amount_a:.2f}) should stay below the scheme's "
-                f"tier-1 minimum ({SCHEME_TIER1_MIN})",
+                f"live tier-1 minimum ({tier1_min})",
             )
         except Exception as exc:
             soft_assert.check(False, f"Entering Product A failed: {exc}")
@@ -1010,18 +1066,18 @@ def test_scenario12_scheme_products_combined_threshold_add_sale(logged_in_driver
     combined = None
     with step(page, "Search and enter Product B (Almond Carnival GRMT Tub) so the combined total crosses tier 1"):
         try:
-            page.search_product("Almond Carnival GRMT Tub [1*2]")
-            info_b = page.product_row(0)
+            idx_b = page.search_product("Almond Carnival GRMT Tub [1*2]")
+            info_b = page.product_row(idx_b)
             soft_assert.check_true(
                 info_b["scheme_id"] == info_a["scheme_id"],
                 f"Product B should share the same scheme id as Product A "
                 f"(A={info_a['scheme_id']}, B={info_b['scheme_id']})",
             )
-            target_combined = (SCHEME_TIER1_MIN + SCHEME_TIER1_MAX) / 2
+            target_combined = (tier1_min + tier1_max) / 2
             needed_amount_b = max(0.0, target_combined - amount_a)
             qty_b = max(1, int(needed_amount_b / info_b["price"]) + 1)
             qty_b = min(qty_b, max(1, int(info_b["available_stock"])))
-            page.enter_quantity(0, qty_b)
+            page.enter_quantity(idx_b, qty_b)
             amount_b = info_b["price"] * qty_b
             combined = amount_a + amount_b
             allure.attach(
@@ -1031,9 +1087,9 @@ def test_scenario12_scheme_products_combined_threshold_add_sale(logged_in_driver
                 attachment_type=allure.attachment_type.TEXT,
             )
             soft_assert.check_true(
-                SCHEME_TIER1_MIN <= combined <= SCHEME_TIER1_MAX,
-                f"Combined amount ({combined:.2f}) should land within the scheme's tier-1 range "
-                f"({SCHEME_TIER1_MIN}-{SCHEME_TIER1_MAX})",
+                tier1_min <= combined <= tier1_max,
+                f"Combined amount ({combined:.2f}) should land within the scheme's live tier-1 range "
+                f"({tier1_min}-{tier1_max})",
             )
         except Exception as exc:
             soft_assert.check(False, f"Entering Product B failed: {exc}")
@@ -1074,10 +1130,11 @@ def test_scenario12_scheme_products_combined_threshold_add_sale(logged_in_driver
             soft_assert.check_true(
                 len(items) >= 3, f"Expected at least 3 lines (2 entered + 1 free bonus item), got {len(items)}"
             )
-            bonus_present = any("premium vanilla" in i["item_name"].lower() for i in items)
+            bonus_key = bonus_name.lower().split("[")[0].strip()
+            bonus_present = bool(bonus_key) and any(bonus_key in i["item_name"].lower() for i in items)
             soft_assert.check_true(
                 bonus_present,
-                "The scheme's tier-1 bonus product (Premium Vanilla PP) should appear in View Selected Items",
+                f"The scheme's tier-1 bonus product ({bonus_name!r}, read live) should appear in View Selected Items",
             )
             if summary is not None and vsi_total is not None:
                 soft_assert.check_true(
@@ -1143,8 +1200,8 @@ def test_scenario12_scheme_products_combined_threshold_add_sale(logged_in_driver
                 f"Invoice should list at least 3 line items (2 entered + 1 free bonus), got {invoice_item_count}",
             )
             soft_assert.check_true(
-                "premium vanilla" in summary_table.lower(),
-                "The scheme's tier-1 bonus product (Premium Vanilla PP) should appear on the invoice",
+                bool(bonus_key) and bonus_key in summary_table.lower(),
+                f"The scheme's tier-1 bonus product ({bonus_name!r}, read live) should appear on the invoice",
             )
         except Exception as exc:
             soft_assert.check(False, f"Invoice generation/verification step failed: {exc}")
@@ -1193,10 +1250,12 @@ def test_scenario13_print_with_no_items_then_two_items(logged_in_driver, soft_as
             return
 
     entered = {}
-    with step(page, "Enter 2 items"):
+    with step(page, "Pick 2 products with stock and enter qty 1 each"):
         try:
-            for i in range(2):
-                code = page.enter_quantity(i, 1)
+            rows = page.pick_rows_with_stock(2, min_qty=1)
+            _attach_rows_used(rows)
+            for row_idx in rows:
+                code = page.enter_quantity(row_idx, 1)
                 entered[code] = True
             soft_assert.check_true(
                 len(entered) == 2, f"Expected 2 distinct product rows entered, got {len(entered)}"
@@ -1246,9 +1305,10 @@ def test_scenario14_repeated_print_company_header_consistency(logged_in_driver, 
             soft_assert.check(False, f"Setup failed: {exc}")
             return
 
-    with step(page, "Enter 1 product and Calculate"):
+    with step(page, "Enter 1 product (chosen by live stock) and Calculate"):
         try:
-            page.enter_quantity(0, 1)
+            row_idx = page.pick_rows_with_stock(1, min_qty=1)[0]
+            page.enter_quantity(row_idx, 1)
             page.click_calc()
         except Exception as exc:
             soft_assert.check(False, f"Entering product / Calculate failed: {exc}")
@@ -1314,6 +1374,11 @@ def test_scenario14_repeated_print_company_header_consistency(logged_in_driver, 
     "Calc -> verify amount/items -> Update Sale -> Proceed -> verify against database"
 )
 def test_scenario15_edit_order_add_more_items_then_verify(logged_in_driver, soft_assert):
+    with allure.step("Note the newest My Sales invoice for this customer BEFORE the sale"):
+        baseline_invoice = _my_sales_baseline(logged_in_driver)
+        allure.attach(str(baseline_invoice), name="my_sales_baseline_invoice",
+                      attachment_type=allure.attachment_type.TEXT)
+
     page = ProductPage(logged_in_driver)
     with step(page, f"Open product page and select customer '{CUSTOMER_NAME}'"):
         try:
@@ -1324,11 +1389,13 @@ def test_scenario15_edit_order_add_more_items_then_verify(logged_in_driver, soft
             return
 
     entered = {}
-    with step(page, "Enter 2 items: qty 2 and qty 1"):
+    with step(page, "Pick 2 products with stock and enter qty 2 and qty 1"):
         try:
-            code0 = page.enter_quantity(0, 2)
+            rows = page.pick_rows_with_stock(2, min_qty=2)
+            _attach_rows_used(rows)
+            code0 = page.enter_quantity(rows[0], 2)
             entered[code0] = 2
-            code1 = page.enter_quantity(1, 1)
+            code1 = page.enter_quantity(rows[1], 1)
             entered[code1] = 1
             soft_assert.check_true(
                 len(entered) == 2, f"Expected 2 distinct product rows entered, got {len(entered)}"
@@ -1375,14 +1442,16 @@ def test_scenario15_edit_order_add_more_items_then_verify(logged_in_driver, soft
     with allure.step("Verify the finalized sale on the My Sales report, then click Edit"):
         try:
             my_sale_page.open()
-            latest_sale = my_sale_page.get_latest_sale_for_client(CUSTOMER_NAME)
+            latest_sale = my_sale_page.get_latest_sale_for_client(CUSTOMER_NAME, exclude_invoice_ids={baseline_invoice})
             allure.attach(str(latest_sale), name="my_sales_row_before_edit", attachment_type=allure.attachment_type.TEXT)
             soft_assert.check_true(latest_sale is not None, "A sale row for 'Demo Dealer 4' should exist on My Sales")
             if latest_sale is not None:
                 soft_assert.check_equal(
                     latest_sale["no_of_items"], str(len(entered)), "My Sales: No. Of Items before edit"
                 )
-            my_sale_page.click_edit_for_client(CUSTOMER_NAME)
+            my_sale_page.click_edit_for_client(
+                CUSTOMER_NAME, invoice_id=latest_sale["invoice_id"] if latest_sale else None
+            )
         except Exception as exc:
             soft_assert.check(False, f"My Sales verification / Edit navigation failed: {exc}")
             return
@@ -1471,6 +1540,11 @@ def test_scenario15_edit_order_add_more_items_then_verify(logged_in_driver, soft
     "Proceed -> verify DB"
 )
 def test_scenario16_single_scheme_product_edit_verify_scheme_persists(logged_in_driver, soft_assert):
+    with allure.step("Note the newest My Sales invoice for this customer BEFORE the sale"):
+        baseline_invoice = _my_sales_baseline(logged_in_driver)
+        allure.attach(str(baseline_invoice), name="my_sales_baseline_invoice",
+                      attachment_type=allure.attachment_type.TEXT)
+
     page = ProductPage(logged_in_driver)
     with step(page, f"Open product page and select customer '{CUSTOMER_NAME}'"):
         try:
@@ -1482,12 +1556,13 @@ def test_scenario16_single_scheme_product_edit_verify_scheme_persists(logged_in_
 
     tier1_min = None
     tier1_max = None
+    row_idx = None
     with step(page, "Search the scheme product and read its current tier-1 range from its own Scheme Details popup"):
         try:
-            page.search_product("Aam Chaska Falala Candy [1*10]")
-            info = page.product_row(0)
+            row_idx = page.search_product("Aam Chaska Falala Candy [1*10]")
+            info = page.product_row(row_idx)
             soft_assert.check_true(info["scheme_id"] is not None, "Product should carry a scheme tag")
-            tiers = page.get_scheme_tiers(0)
+            tiers = page.get_scheme_tiers(row_idx)
             allure.attach(str(tiers), name="scheme_tiers_read_live", attachment_type=allure.attachment_type.TEXT)
             soft_assert.check_true(len(tiers) >= 1, "Scheme Details popup should list at least one tier")
             if not tiers:
@@ -1501,10 +1576,10 @@ def test_scenario16_single_scheme_product_edit_verify_scheme_persists(logged_in_
     line_amount = None
     with step(page, "Enter enough quantity to cross the tier-1 threshold read live, on its own"):
         try:
-            info = page.product_row(0)
+            info = page.product_row(row_idx)
             qty = max(1, int(tier1_min / info["price"]) + 1)
             qty = min(qty, max(1, int(info["available_stock"])))
-            page.enter_quantity(0, qty)
+            page.enter_quantity(row_idx, qty)
             line_amount = info["price"] * qty
             allure.attach(
                 f"Product: {info['display_name']} | price/carton={info['price']} | qty={qty} | "
@@ -1608,10 +1683,11 @@ def test_scenario16_single_scheme_product_edit_verify_scheme_persists(logged_in_
             return
 
     my_sale_page = MySalePage(logged_in_driver)
+    latest_sale = None
     with allure.step("Verify the finalized sale on the My Sales report"):
         try:
             my_sale_page.open()
-            latest_sale = my_sale_page.get_latest_sale_for_client(CUSTOMER_NAME)
+            latest_sale = my_sale_page.get_latest_sale_for_client(CUSTOMER_NAME, exclude_invoice_ids={baseline_invoice})
             allure.attach(str(latest_sale), name="my_sales_latest_row", attachment_type=allure.attachment_type.TEXT)
             soft_assert.check_true(latest_sale is not None, "A sale row for 'Demo Dealer 4' should exist on My Sales")
         except Exception as exc:
@@ -1621,7 +1697,9 @@ def test_scenario16_single_scheme_product_edit_verify_scheme_persists(logged_in_
     edit_summary = None
     with allure.step("Click Edit and verify the scheme is still applied on the Edit Sale page"):
         try:
-            my_sale_page.click_edit_for_client(CUSTOMER_NAME)
+            my_sale_page.click_edit_for_client(
+                CUSTOMER_NAME, invoice_id=latest_sale["invoice_id"] if latest_sale else None
+            )
             edit_page = ProductPage(logged_in_driver)
             edit_page.click_calc()
             edit_summary = edit_page.get_summary()

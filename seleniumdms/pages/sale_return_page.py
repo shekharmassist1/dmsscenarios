@@ -1,6 +1,6 @@
 import time
 
-from selenium.common.exceptions import StaleElementReferenceException
+from selenium.common.exceptions import StaleElementReferenceException, TimeoutException
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.support import expected_conditions as EC
@@ -73,26 +73,77 @@ class SaleReturnPage(BasePage):
         )
         return self
 
-    @staticmethod
-    def _customer_row_locator(name):
-        return (By.XPATH, f"//td[normalize-space(text())='{name}']/parent::tr")
-
     # Fallback customer to try if the primary one has no products assigned (the app shows a
     # blocking "Product not exists!" alert in that case rather than proceeding).
     FALLBACK_CUSTOMER = "Demo Dealer 4"
 
+    @staticmethod
+    def _wait_table_settled(wrapper, timeout=10):
+        """Wait until the table's 'Showing X To Y Of Z Entries' text stops changing (filter/redraw done)."""
+        end = time.time() + timeout
+        last, stable = None, 0
+        while time.time() < end:
+            try:
+                text = wrapper.find_element(By.CSS_SELECTOR, ".dataTables_info").text
+            except Exception:
+                text = ""
+            if text == last:
+                stable += 1
+                if stable >= 3:
+                    return
+            else:
+                last, stable = text, 0
+            time.sleep(0.3)
+
+    def _customer_table(self):
+        """(search_input, table_wrapper) for the VISIBLE customer table only."""
+        def _visible_search(d):
+            for el in d.find_elements(*self.CUSTOMER_SEARCH_INPUT):
+                if el.is_displayed():
+                    return el
+            return False
+
+        search = self.wait_until(_visible_search, timeout=60, message="Customer search box never became visible")
+        wrapper = search.find_element(By.XPATH, "./ancestor::div[contains(@class,'dataTables_wrapper')]")
+        return search, wrapper
+
     def _select_customer_once(self, name):
-        search = self.find(self.CUSTOMER_SEARCH_INPUT)
+        """The search matches each word separately across all columns ('Demo Dealer 2' also returns
+        'Demo Dealer 11/12/20...'), which can push the wanted customer onto page 2. So: show All rows
+        in this table, search, wait for the redraw, take an EXACT name match, and page through with
+        Next only as a fallback."""
+        search, wrapper = self._customer_table()
+        try:
+            selects = wrapper.find_elements(By.CSS_SELECTOR, "select[name$='_length']") or \
+                wrapper.find_elements(By.CSS_SELECTOR, ".dataTables_length select")
+            if selects:
+                Select(selects[0]).select_by_value("-1")
+                self._wait_table_settled(wrapper)
+        except Exception as exc:
+            print(f"Could not switch customer list to 'All' (will page through instead): {exc}")
+
         search.clear()
         search.send_keys(name)
-        row = self.wait_until(
-            EC.presence_of_element_located(self._customer_row_locator(name)),
-            message=f"Customer row for '{name}' never appeared in the search results",
-        )
-        select_btn = row.find_element(
-            By.XPATH, ".//button[contains(text(),'Select')] | .//a[contains(text(),'Select')]"
-        )
-        self.js_click(select_btn)
+        self._wait_table_settled(wrapper)
+
+        row_xpath = f".//tbody/tr[td[normalize-space(.)='{name}']]"
+        for _ in range(20):
+            rows = wrapper.find_elements(By.XPATH, row_xpath)
+            if rows:
+                select_btn = rows[0].find_element(
+                    By.XPATH,
+                    ".//a[contains(normalize-space(.),'Select')] | .//button[contains(normalize-space(.),'Select')]",
+                )
+                self.js_click(select_btn)
+                return
+            next_btn = wrapper.find_elements(By.CSS_SELECTOR, ".paginate_button.next")
+            if not next_btn or "disabled" in (next_btn[0].get_attribute("class") or ""):
+                break
+            target = next_btn[0].find_elements(By.TAG_NAME, "a") or [next_btn[0]]
+            self.js_click(target[0])
+            self._wait_table_settled(wrapper)
+
+        raise TimeoutException(f"Customer row for '{name}' never appeared in the search results")
 
     def select_customer(self, name):
         self._select_customer_once(name)
@@ -111,6 +162,7 @@ class SaleReturnPage(BasePage):
     def choose_without_reference_and_go(self):
         ddl = self.wait_until(
             EC.presence_of_element_located(self.BILL_FOR_SELECT),
+            timeout=60,
             message="'Sale Return For...' dialog (ddlBillFor) never appeared after selecting the customer",
         )
         Select(ddl).select_by_visible_text("Without Reference")
@@ -123,6 +175,7 @@ class SaleReturnPage(BasePage):
     def _open_with_reference_dialog_and_go(self):
         ddl = self.wait_until(
             EC.presence_of_element_located(self.BILL_FOR_SELECT),
+            timeout=60,
             message="'Sale Return For...' dialog (ddlBillFor) never appeared after selecting the customer",
         )
         Select(ddl).select_by_visible_text("With Reference")
@@ -197,6 +250,28 @@ class SaleReturnPage(BasePage):
         )
         self.js_click(select_btn)
         self.wait_for_grid_loaded()
+        self.wait_for_prefilled_quantities()
+        return self
+
+    def wait_for_prefilled_quantities(self, timeout=45):
+        """In the 'With Reference' flow the grid rows appear first and the originally sold quantities
+        are filled into C1 a moment later by a second AJAX call. Clicking Calc before that gave
+        'Total Item 0' (Scenario 7). Wait until at least one C1 input holds a non-zero number; if it
+        never happens, carry on so the test's own Calc check reports it."""
+        def _has_qty(d):
+            for inp in d.find_elements(*self.SALEABLE_QTY_INPUTS):
+                try:
+                    value = (inp.get_attribute("value") or "").strip()
+                    if value and float(value) > 0:
+                        return True
+                except (ValueError, StaleElementReferenceException):
+                    continue
+            return False
+
+        try:
+            self.wait_until(_has_qty, timeout=timeout, message="")
+        except Exception:
+            print("Referenced invoice quantities were not pre-filled within the wait")
         return self
 
     def wait_for_grid_loaded(self, timeout=120):
@@ -348,7 +423,7 @@ class SaleReturnPage(BasePage):
         )
         return self
 
-    def click_print_or_detect_error(self, timeout=15):
+    def click_print_or_detect_error(self, timeout=60):
         """Click Print; return (True, None) if Print Preview opens, or (False, error_text) if an
         unrelated jconfirm error dialog appears instead (e.g. the Bill/New Invoice module's known
         'Something went wrong...Error Code : -1014' defect on repeated Print use -- TC-16)."""
@@ -358,10 +433,14 @@ class SaleReturnPage(BasePage):
         def _outcome(d):
             if d.find_elements(*self.PRINT_PREVIEW_TITLE):
                 return "preview"
-            error_boxes = [
-                b for b in d.find_elements(By.CSS_SELECTOR, ".jconfirm-box")
-                if b.is_displayed() and "something went wrong" in b.text.lower()
-            ]
+            error_boxes = []
+            for b in d.find_elements(By.CSS_SELECTOR, ".jconfirm-box"):
+                try:
+                    text = b.text.lower()
+                    if b.is_displayed() and ("something went wrong" in text or "error code" in text):
+                        error_boxes.append(b)
+                except StaleElementReferenceException:
+                    continue
             if error_boxes:
                 return error_boxes[0].text
             return False
@@ -426,7 +505,7 @@ class SaleReturnPage(BasePage):
         box = self._visible_box_containing("Full Sale Return")
         proceed_btn = box.find_element(By.XPATH, ".//button[contains(normalize-space(.),'Proceed')]")
         self.js_click(proceed_btn)
-        self._visible_box_containing("Success")
+        self._wait_for_success()
         return self
 
     def click_save(self):
@@ -466,8 +545,34 @@ class SaleReturnPage(BasePage):
         box = self._visible_box_containing("Return Confirm")
         proceed_btn = box.find_element(By.XPATH, ".//button[contains(normalize-space(.),'Proceed')]")
         self.js_click(proceed_btn)
-        self._visible_box_containing("Success")
+        self._wait_for_success()
         return self
+
+    def _wait_for_success(self, timeout=60):
+        """After 'Proceed' the server can take a while (up to a minute under load) to save the return.
+        Wait for the Success dialog; if an error dialog shows up instead, fail with its text so the
+        report says WHY (e.g. an app error code) rather than a bare timeout."""
+        def _outcome(d):
+            for b in d.find_elements(*self.VISIBLE_JCONFIRM_BOXES):
+                try:
+                    if not b.is_displayed():
+                        continue
+                    text = b.text
+                    if "Success" in text:
+                        return ("success", b)
+                    lowered = text.lower()
+                    if "error code" in lowered or "something went wrong" in lowered:
+                        return ("error", text.strip().replace("\n", " | "))
+                except StaleElementReferenceException:
+                    continue
+            return False
+
+        kind, value = self.wait_until(
+            _outcome, timeout=timeout, message="No Success (or error) dialog appeared after clicking Proceed"
+        )
+        if kind == "error":
+            raise AssertionError(f"Return was not saved -- the app showed an error instead: {value}")
+        return value
 
     def get_success_message(self):
         return self._visible_box_containing("Success").text.strip()
