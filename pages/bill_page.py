@@ -1,4 +1,4 @@
-from openpyxl.styles.builtins import total
+import os
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
@@ -984,21 +984,62 @@ class BillPage:
         )
         confirm_btn.click()
 
-    def click_print_and_switch(self):
-        # Wait for print dialog
-        self.wait.until(EC.visibility_of_element_located((
-            By.CLASS_NAME, "printPreviewDialog"
-        )))
+    # -------------------------
+    # POST-SALE PRINT
+    # -------------------------
+    # After 'Yes! Proceed.' the app shows a jconfirm dialog titled "Print Preview!" with a Print
+    # button (confirmed in the seleniumdms project). The old code waited for a '.printPreviewDialog'
+    # class that no longer exists, so it always timed out.
+    POST_SALE_PRINT_TITLE = (
+        By.XPATH,
+        "//span[contains(@class,'jconfirm-title')][contains(normalize-space(.),'Print Preview')]",
+    )
+    POST_SALE_PRINT_BUTTON = (
+        By.XPATH,
+        "//span[contains(@class,'jconfirm-title')][contains(normalize-space(.),'Print Preview')]"
+        "/ancestor::div[contains(@class,'jconfirm-box')]"
+        "//div[contains(@class,'jconfirm-buttons')]/button[normalize-space()='Print']",
+    )
+    LEGACY_PRINT_BUTTON = (
+        By.XPATH,
+        "//div[contains(@class,'printPreviewDialog')]//button[normalize-space()='Print']",
+    )
 
-        print_btn = self.wait.until(EC.element_to_be_clickable((
-            By.XPATH,
-            "//div[contains(@class,'printPreviewDialog')]//button[normalize-space()='Print']"
-        )))
+    def _find_post_sale_print_button(self, timeout=30):
+        """Return the visible Print button of the post-sale print dialog (new jconfirm markup first,
+        old '.printPreviewDialog' markup as a fallback)."""
+        def _visible_print_button(d):
+            for locator in (self.POST_SALE_PRINT_BUTTON, self.LEGACY_PRINT_BUTTON):
+                for btn in d.find_elements(*locator):
+                    try:
+                        if btn.is_displayed():
+                            return btn
+                    except Exception:
+                        continue
+            return False
+
+        try:
+            return WebDriverWait(self.driver, timeout).until(_visible_print_button)
+        except TimeoutException:
+            dialogs = []
+            for box in self.driver.find_elements(By.CSS_SELECTOR, ".jconfirm-box"):
+                try:
+                    if box.is_displayed() and box.text.strip():
+                        dialogs.append(box.text.strip().replace("\n", " | "))
+                except Exception:
+                    continue
+            raise TimeoutException(
+                "Post-sale 'Print Preview' dialog with a Print button never appeared"
+                + (f" -- visible dialog(s): {' || '.join(dialogs)}" if dialogs else " -- no dialog visible")
+            )
+
+    def click_print_and_switch(self):
+        print_btn = self._find_post_sale_print_button()
 
         original_window = self.driver.current_window_handle
         all_windows_before = set(self.driver.window_handles)
 
-        print_btn.click()
+        self.driver.execute_script("arguments[0].click();", print_btn)
 
         # Wait for new tab
         WebDriverWait(self.driver, 20).until(
@@ -1017,6 +1058,7 @@ class BillPage:
         print(f"Title: {self.driver.title}")
         print(f"URL: {self.driver.current_url}")
 
+        os.makedirs("screenshots", exist_ok=True)
         self.driver.save_screenshot("screenshots/invoice.png")
 
         self.driver.close()

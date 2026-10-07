@@ -1,4 +1,4 @@
-from selenium.webdriver.common import alert
+from selenium.common.exceptions import TimeoutException
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
@@ -83,30 +83,49 @@ class purchaseOrder:
 
 
     def click_first_row_print(self):
-        rows = WebDriverWait(self.driver, 20).until(
-        EC.presence_of_all_elements_located((By.XPATH, "//table//tbody//tr")))
+        """Open the Action menu on the first order row and click its Print Preview icon.
 
-
-        first_row = rows[0]
-
-        # './/' keeps the search inside the first row ('//' searched the whole page), and the
-        # Action control may be an input, button or link depending on the screen version.
-        action_btn = first_row.find_element(
-        By.XPATH,
-        ".//*[self::input[@value='Action'] or self::button[normalize-space()='Action']"
-        " or self::a[normalize-space()='Action']]"
-         )
-
-        self.wait.until(EC.element_to_be_clickable(action_btn))
-        action_btn.click()
-
-    # Step 3: wait for dropdown/menu to appear
-        print_btn = self.wait.until(
-          EC.visibility_of_element_located(
-            (By.XPATH,
-             "(//span[@title='Print Preview'])[1]")
-          )
+        The old 'Action' button (<input value='Action'>) no longer exists: the Action menu now
+        opens on mouse HOVER over .dmsActionMenu, and the icons live in .actionButtonsWrapper
+        (same markup as the My Sales page). A JS mouseover opens it reliably even headless."""
+        first_row = WebDriverWait(self.driver, 20).until(
+            EC.presence_of_element_located((
+                By.XPATH,
+                "//table//tbody/tr[td][.//*[contains(@class,'dmsActionMenu')]]",
+            ))
         )
+
+        menu = first_row.find_element(By.CSS_SELECTOR, ".dmsActionMenu")
+        self.driver.execute_script("arguments[0].scrollIntoView({block:'center'});", menu)
+        self.driver.execute_script(
+            "arguments[0].dispatchEvent(new MouseEvent('mouseover', {bubbles: true, cancelable: true}));",
+            menu,
+        )
+
+        def _visible_print_icon(d):
+            candidates = first_row.find_elements(
+                By.XPATH,
+                ".//span[@title='Print Preview']"
+                " | .//div[contains(@class,'actionButtonsWrapper')]//span["
+                "contains(@class,'GetInvoiceDetails') or "
+                "contains(translate(@class,'PRINT','print'),'print') or "
+                "contains(translate(@title,'PRINT','print'),'print')]",
+            )
+            for icon in candidates:
+                try:
+                    if icon.is_displayed():
+                        return icon
+                except Exception:
+                    continue
+            return False
+
+        try:
+            print_btn = WebDriverWait(self.driver, 10).until(_visible_print_icon)
+        except TimeoutException:
+            raise TimeoutException(
+                "Print Preview icon never appeared after hovering the Action menu on the first My Order row"
+            )
+
         self.driver.execute_script("arguments[0].click();", print_btn)
         time.sleep(5)
 
