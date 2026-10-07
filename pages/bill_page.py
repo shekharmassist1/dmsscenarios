@@ -874,13 +874,14 @@ class BillPage:
 
 
     def go_to_product_page(self):
+        """Reopen the draft just saved, via the Order button on the drafts list, and wait for
+        its product grid. (Previously this loaded EmployeePages/scheme_details.aspx, an unrelated
+        admin page that never has #productlist, so the step always timed out.)"""
+        self.click_order()
 
-        # Option 1: safest → reload bill page directly
-        self.driver.get("https://admin.massistcrm.com/EmployeePages/scheme_details.aspx")
-
-        # wait for product grid to load
-        WebDriverWait(self.driver, 30).until(
-            EC.presence_of_element_located((By.ID, "productlist"))
+        WebDriverWait(self.driver, 60).until(
+            lambda d: len(d.find_elements(By.CSS_SELECTOR, "#productlist tbody tr")) > 0,
+            message="Product grid (#productlist rows) never loaded after clicking Order on the draft",
         )
 
         print("✓ Back to Product Page")

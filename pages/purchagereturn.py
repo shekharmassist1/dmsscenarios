@@ -93,7 +93,12 @@ class purchageReturnPage:
         confirm_btn.click()
 
     def click_ok(self):
-        alert =self.wait.until(EC.element_to_be_clickable((By.XPATH, "//button[normalize-space()='OK']")))
+        alert = self.wait.until(EC.element_to_be_clickable((
+            By.XPATH,
+            "//div[contains(@class,'jconfirm-buttons')]//button"
+            "[translate(normalize-space(),'ok','OK')='OK']"
+            " | //button[translate(normalize-space(),'ok','OK')='OK']"
+        )))
         alert.click()
         time.sleep(5)
 

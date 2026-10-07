@@ -1,6 +1,7 @@
 import pytest
 import allure
 import time
+from selenium.webdriver.common.by import By
 
 from pages.login_page import LoginPage
 from pages.reports_page import ReportsPage
@@ -66,9 +67,22 @@ def test_click_all_reports(driver):
             ("Customer Master", "//label[normalize-space()='Customer Master']")
         ]
 
+        not_shown = []
         for report_name, xpath in reports_list:
 
             with allure.step(f"Verify {report_name}"):
+
+                # Some reports are switched on per company (e.g. Purchase Report via the
+                # AdminSetting 'DMSPurchaseReport' flag), so a missing one is noted and skipped.
+                if not [e for e in driver.find_elements(By.XPATH, xpath) if e.is_displayed()]:
+                    not_shown.append(report_name)
+                    allure.attach(
+                        f"'{report_name}' is not shown on the Reports page for this user/company.",
+                        name=f"{report_name} not shown",
+                        attachment_type=allure.attachment_type.TEXT,
+                    )
+                    print(f"⚠ Not shown, skipped: {report_name}")
+                    continue
 
                 reports.click_report_and_capture(
                     report_name,

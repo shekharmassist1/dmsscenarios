@@ -89,9 +89,12 @@ class purchaseOrder:
 
         first_row = rows[0]
 
+        # './/' keeps the search inside the first row ('//' searched the whole page), and the
+        # Action control may be an input, button or link depending on the screen version.
         action_btn = first_row.find_element(
         By.XPATH,
-        "//input[@value='Action']"
+        ".//*[self::input[@value='Action'] or self::button[normalize-space()='Action']"
+        " or self::a[normalize-space()='Action']]"
          )
 
         self.wait.until(EC.element_to_be_clickable(action_btn))

@@ -43,14 +43,13 @@ class SaleReturnPage:
 
     def select_first_product(self):
         # Wait for slow API to load table
-        WebDriverWait(self.driver, 60).until(
-            EC.presence_of_element_located((By.ID, "productlist"))
+        # The table shell (#productlist) appears before its rows are filled by a slow API call,
+        # so wait for an actual row rather than just the table.
+        rows = WebDriverWait(self.driver, 90).until(
+            lambda d: d.find_elements(By.CSS_SELECTOR, "#productlist tbody tr"),
+            message="Sale Return product grid loaded no rows within 90s after Go!",
         )
-        time.sleep(3)
-
-        first_row = self.driver.find_element(
-            By.CSS_SELECTOR, "#productlist tbody tr"
-        )
+        first_row = rows[0]
         first_row.click()
         print("✅ First product row clicked")
 
@@ -90,7 +89,7 @@ class SaleReturnPage:
 
     def click_ok(self):
         ok_btn = self.wait.until(EC.element_to_be_clickable((
-            By.XPATH, "//button[normalize-space()='OK']"
+            By.XPATH, "//button[translate(normalize-space(),'ok','OK')='OK']"
         )))
         ok_btn.click()
         print("✅ Received successfully!")
