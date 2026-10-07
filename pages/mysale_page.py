@@ -98,28 +98,37 @@ class MySalePage:
         return db_data
 
     def click_first_row_edit(self):
-        rows = WebDriverWait(self.driver, 20).until(
-            EC.presence_of_all_elements_located(
-                (By.XPATH, "//table//tbody//tr")
-            )
+        """Open the Action menu on the first sale row and click Edit.
+
+        The old 'Action' button (<input value='Action'>) no longer exists: the menu now opens on
+        mouse HOVER over .dmsActionMenu, and the icons (editOrder, GetInvoiceDetails, ...) live in
+        .actionButtonsWrapper inside the row."""
+        first_row = WebDriverWait(self.driver, 20).until(
+            EC.presence_of_element_located((
+                By.XPATH,
+                "//table//tbody/tr[td][.//*[contains(@class,'dmsActionMenu')]]",
+            ))
         )
 
-        first_row = rows[0]
-
-        action_btn = first_row.find_element(
-            By.XPATH,
-            "//input[@value='Action']"
+        menu = first_row.find_element(By.CSS_SELECTOR, ".dmsActionMenu")
+        self.driver.execute_script("arguments[0].scrollIntoView({block:'center'});", menu)
+        self.driver.execute_script(
+            "arguments[0].dispatchEvent(new MouseEvent('mouseover', {bubbles: true, cancelable: true}));",
+            menu,
         )
 
-        self.wait.until(EC.element_to_be_clickable(action_btn))
-        action_btn.click()
+        def _visible_edit_icon(d):
+            for icon in first_row.find_elements(By.XPATH, ".//span[contains(@class,'editOrder')]"):
+                try:
+                    if icon.is_displayed():
+                        return icon
+                except Exception:
+                    continue
+            return False
 
-        # Step 3: wait for dropdown/menu to appear
-        edit_btn = self.wait.until(
-            EC.visibility_of_element_located(
-                (By.XPATH,
-                 "//table//tbody//tr[1]//td[contains(@class,'Action')]//span[contains(@class,'editOrder')]")
-            )
+        edit_btn = WebDriverWait(self.driver, 10).until(
+            _visible_edit_icon,
+            message="Edit icon never appeared after hovering the Action menu on the first My Sales row",
         )
         self.driver.execute_script("arguments[0].click();", edit_btn)
         time.sleep(5)

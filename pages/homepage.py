@@ -455,18 +455,27 @@ class HomePage:
         assert current_page.text == "1", f"Expected page 1 to be active, got {current_page.text}"
         print(f"Page 1 is active ✓")
 
-        # Step 4: Click pages 2, 3, 4, 5 and verify each becomes active
-        for page_num in ["2", "3", "4", "5"]:
+        # Step 4: Click every page that actually exists (2..last) and verify each becomes active.
+        # The page count depends on how many orders exist in the quarter (e.g. 71 entries / 25 per
+        # page = 3 pages), so it must not be hardcoded -- clicking a non-existent page '4' timed out.
+        page_links = self.driver.find_elements(
+            By.CSS_SELECTOR, "#tbl_order_grid_paginate a.paginate_button:not(.previous):not(.next)"
+        )
+        page_numbers = sorted({int(a.text) for a in page_links if a.text.strip().isdigit()})
+        last_page = max(page_numbers) if page_numbers else 1
+        print(f"Total pages: {last_page}")
+
+        for page_num in [str(n) for n in range(2, last_page + 1)]:
             page_btn = self.wait.until(
                 EC.element_to_be_clickable(
-                    (By.XPATH, f"//a[contains(@class,'paginate_button') and normalize-space()='{page_num}']")
+                    (By.XPATH, f"//div[@id='tbl_order_grid_paginate']//a[contains(@class,'paginate_button') and normalize-space()='{page_num}']")
                 )
             )
             page_btn.click()
             time.sleep(1.5)
 
             # Verify clicked page becomes current
-            current = self.driver.find_element(By.CSS_SELECTOR, "a.paginate_button.current")
+            current = self.driver.find_element(By.CSS_SELECTOR, "#tbl_order_grid_paginate a.paginate_button.current")
             assert current.text == page_num, f"Expected page {page_num} to be active, got {current.text}"
             print(f"Page {page_num} is active ✓")
 
@@ -479,24 +488,29 @@ class HomePage:
             info = self.driver.find_element(By.ID, "tbl_order_grid_info")
             print(f"  → {info.text}")
 
-        # Step 5: Click Next and verify page 6 becomes active
-        next_btn = self.wait.until(
-            EC.element_to_be_clickable((By.ID, "tbl_order_grid_next"))
-        )
-        next_btn.click()
-        time.sleep(1.5)
-        current = self.driver.find_element(By.CSS_SELECTOR, "a.paginate_button.current")
-        print(f"After Next click → Page {current.text} is active ✓")
+        # Step 5: On the last page, Next must be disabled; otherwise click it and check we moved on.
+        next_btn = self.driver.find_element(By.ID, "tbl_order_grid_next")
+        current = self.driver.find_element(By.CSS_SELECTOR, "#tbl_order_grid_paginate a.paginate_button.current")
+        if current.text == str(last_page):
+            assert "disabled" in next_btn.get_attribute("class"), "Next should be disabled on the last page"
+            print(f"Next button is disabled on the last page ({last_page}) ✓")
+        else:
+            before = current.text
+            next_btn.click()
+            time.sleep(1.5)
+            current = self.driver.find_element(By.CSS_SELECTOR, "#tbl_order_grid_paginate a.paginate_button.current")
+            assert current.text != before, "Clicking Next did not change the page"
+            print(f"After Next click → Page {current.text} is active ✓")
 
         # Step 6: Go back to page 1 via Previous button repeatedly (or direct click)
         page1_btn = self.wait.until(
             EC.element_to_be_clickable(
-                (By.XPATH, "//a[contains(@class,'paginate_button') and normalize-space()='1']")
+                (By.XPATH, "//div[@id='tbl_order_grid_paginate']//a[contains(@class,'paginate_button') and normalize-space()='1']")
             )
         )
         page1_btn.click()
         time.sleep(1.5)
-        current = self.driver.find_element(By.CSS_SELECTOR, "a.paginate_button.current")
+        current = self.driver.find_element(By.CSS_SELECTOR, "#tbl_order_grid_paginate a.paginate_button.current")
         assert current.text == "1", "Should be back on page 1"
         print("Back to page 1 ✓")
 
