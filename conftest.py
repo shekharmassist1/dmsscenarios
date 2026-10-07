@@ -4,8 +4,6 @@ import allure
 import json
 from datetime import datetime
 from selenium import webdriver
-from selenium.webdriver.chrome.service import Service
-from webdriver_manager.chrome import ChromeDriverManager
 from config.config import BASE_URL, IMPLICIT_WAIT
 import shutil
 import os
@@ -43,11 +41,28 @@ def pytest_configure(config):
         json.dump(executor, f)
 
 
+def _chrome_options():
+    options = webdriver.ChromeOptions()
+    options.add_argument("--window-size=1920,1080")
+    options.add_argument("--no-sandbox")
+    options.add_argument("--disable-dev-shm-usage")
+    # Return from driver.get() once the HTML is ready instead of waiting for every slow
+    # widget/tracker on the DMS pages (tests already wait for the elements they need).
+    options.page_load_strategy = "eager"
+    if os.getenv("HEADLESS", "false").strip().lower() in ("1", "true", "yes"):
+        options.add_argument("--headless=new")
+        options.add_argument("--disable-gpu")
+    return options
+
+
 @pytest.fixture(scope="function")
 def driver():
-    driver = webdriver.Chrome(
-        service=Service(ChromeDriverManager().install())
-    )
+    # No webdriver-manager: it called googlechromelabs.github.io on EVERY test, so any short
+    # internet/DNS blip errored the test before it started ("Could not reach host. Are you
+    # offline?"). Selenium 4's built-in Selenium Manager finds ChromeDriver itself and falls back
+    # to its cached copy when offline.
+    driver = webdriver.Chrome(options=_chrome_options())
+    driver.set_page_load_timeout(120)
 
     try:
         driver.maximize_window()
