@@ -330,6 +330,145 @@ class SaleReturnCartPage:
             alerts += self.dismiss_alerts(timeout=0.5)
         return False, alerts
 
+    # ------------------------------------------------------------------ Goods Receive -> Return Details -> credit note
+
+    def _visible_box(self, predicate, timeout, message):
+        def _cond(d):
+            for box in d.find_elements(*self.JCONFIRM_BOXES):
+                try:
+                    if box.is_displayed() and predicate(box.text):
+                        return box
+                except StaleElementReferenceException:
+                    continue
+            return False
+        return self.wait_until(_cond, timeout=timeout, message=message)
+
+    def receive_goods_and_confirm(self):
+        """Goods Receive -> confirmation dialog -> 'Yes! Proceed.' -> result dialog -> OK.
+        Returns {'confirm_text', 'result_text'}. Fails with the dialog text if the app shows an error."""
+        self.dismiss_alerts(timeout=1)
+        receive = self._visible(self.RECEIVE_GOODS_BUTTON) or self.wait_until(
+            EC.element_to_be_clickable(self.RECEIVE_GOODS_BUTTON), timeout=30
+        )
+        self.js_click(receive)
+
+        confirm = self._visible_box(
+            lambda t: "Proceed" in t, timeout=60,
+            message="Confirmation dialog with 'Yes! Proceed.' never appeared after Goods Receive",
+        )
+        confirm_text = confirm.text.strip()
+        proceed = confirm.find_element(By.XPATH, ".//button[contains(normalize-space(.),'Proceed')]")
+        self.js_click(proceed)
+
+        # The save can take up to a minute under load. Success -> OK; an error -> fail with its text.
+        def _result(d):
+            for box in d.find_elements(*self.JCONFIRM_BOXES):
+                try:
+                    if not box.is_displayed():
+                        continue
+                    text = box.text
+                    low = text.lower()
+                    if "proceed" in low:
+                        continue  # the confirmation dialog is still closing
+                    if "error code" in low or "something went wrong" in low:
+                        return ("error", box)
+                    if box.find_elements(By.XPATH, ".//button[translate(normalize-space(.),'ok','OK')='OK']"):
+                        return ("ok", box)
+                except StaleElementReferenceException:
+                    continue
+            return False
+
+        kind, box = self.wait_until(_result, timeout=90, message="No result dialog (OK) after 'Yes! Proceed.'")
+        result_text = box.text.strip()
+        if kind == "error":
+            raise AssertionError(f"Goods Receive failed -- the app showed an error: {result_text.replace(chr(10), ' | ')}")
+        self.js_click(box.find_element(By.XPATH, ".//button[translate(normalize-space(.),'ok','OK')='OK']"))
+        return {"confirm_text": confirm_text, "result_text": result_text}
+
+    def wait_for_return_details_page(self, timeout=90):
+        """After OK the app opens the Return Details page; wait until its rows (with an Action menu)
+        are shown. Returns the page URL."""
+        def _ready(d):
+            if "ProductReceived" in d.current_url:
+                return False
+            return any(el.is_displayed() for el in d.find_elements(By.CSS_SELECTOR, "table tbody tr .dmsActionMenu"))
+
+        self.wait_until(_ready, timeout=timeout, message="Return Details page (with Action menus) never opened after OK")
+        time.sleep(1)
+        return self.driver.current_url
+
+    def first_return_row_text(self):
+        rows = [r for r in self.driver.find_elements(By.CSS_SELECTOR, "table tbody tr")
+                if r.find_elements(By.CSS_SELECTOR, ".dmsActionMenu")]
+        return rows[0].text.strip() if rows else ""
+
+    def print_first_return_credit_note(self):
+        """Hover 'Action' on the newest (first) return row, click its Print icon, click Print in the
+        print dialog if one appears, and read the credit note opened in a new tab.
+        Returns {'url', 'title', 'screenshot'}; the tab is closed afterwards."""
+        rows = [r for r in self.driver.find_elements(By.CSS_SELECTOR, "table tbody tr")
+                if r.find_elements(By.CSS_SELECTOR, ".dmsActionMenu")]
+        if not rows:
+            raise AssertionError("No return rows with an Action menu on the Return Details page")
+        row = rows[0]
+        menu = row.find_element(By.CSS_SELECTOR, ".dmsActionMenu")
+        self.driver.execute_script("arguments[0].scrollIntoView({block:'center'});", menu)
+        # The Action menu opens on mouse HOVER (jQuery mouseover), not on click.
+        self.driver.execute_script(
+            "arguments[0].dispatchEvent(new MouseEvent('mouseover', {bubbles: true, cancelable: true}));", menu
+        )
+
+        def _print_icon(d):
+            for icon in row.find_elements(
+                By.XPATH,
+                ".//div[contains(@class,'actionButtonsWrapper')]//*[self::span or self::a or self::i]["
+                "contains(@class,'GetInvoiceDetails') or contains(translate(@class,'PRINT','print'),'print') or "
+                "contains(translate(@title,'PRINT','print'),'print')]",
+            ):
+                try:
+                    if icon.is_displayed():
+                        return icon
+                except StaleElementReferenceException:
+                    continue
+            return False
+
+        icon = self.wait_until(_print_icon, timeout=15, message="Print icon never appeared after hovering Action")
+        handles_before = set(self.driver.window_handles)
+        main_handle = self.driver.current_window_handle
+        self.js_click(icon)
+
+        # Some screens first show a 'Print Preview!' dialog with a Print button; others open the tab directly.
+        end = time.time() + 30
+        while time.time() < end and len(self.driver.window_handles) <= len(handles_before):
+            for box in self.driver.find_elements(*self.JCONFIRM_BOXES):
+                try:
+                    if box.is_displayed():
+                        btns = box.find_elements(By.XPATH, ".//button[normalize-space(.)='Print']")
+                        if btns:
+                            self.js_click(btns[0])
+                            time.sleep(1)
+                except StaleElementReferenceException:
+                    continue
+            time.sleep(0.5)
+
+        new_handles = set(self.driver.window_handles) - handles_before
+        if not new_handles:
+            raise AssertionError("The credit note did not open in a new tab after clicking Print")
+        self.driver.switch_to.window(new_handles.pop())
+        try:
+            self.wait_until(lambda d: d.current_url not in ("", "about:blank"), timeout=30)
+        except TimeoutException:
+            pass
+        time.sleep(2)
+        info = {
+            "url": self.driver.current_url,
+            "title": self.driver.title,
+            "screenshot": self.driver.get_screenshot_as_png(),
+        }
+        self.driver.close()
+        self.driver.switch_to.window(main_handle)
+        return info
+
     def _panel_close_button(self):
         """The round blue '×' at the top-left of the side panel that Save opens (the panel with
         Client Name / Total Qty / Payable / Goods Receive). Found by walking up from the Goods

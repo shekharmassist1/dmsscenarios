@@ -1,3 +1,4 @@
+import re
 import time
 
 import allure
@@ -83,11 +84,85 @@ def _check_header_vs_view_selected(page, driver, expected_items, removed_items, 
     return header, vsi, issues
 
 
+def _receive_goods_and_print_credit_note(page, driver, expected_count, header, tag):
+    """Save -> Goods Receive -> 'Yes! Proceed.' -> OK -> Return Details -> hover Action -> Print ->
+    credit note. Checks the confirmation dialog and the new Return Details row against the Calc
+    header. Returns a list of issues (an app error stops the flow and is reported as an issue)."""
+    issues = []
+    final_amt = to_number(header["final_amount"])
+
+    with allure.step("Save"):
+        opened, alerts = page.save()
+        take_screenshot(driver, f"{tag}_save")
+        if alerts:
+            allure.attach(str(alerts), name="alerts_after_save", attachment_type=allure.attachment_type.TEXT)
+        if not opened:
+            return issues + [f"Save did not open the Goods Receive panel (alerts: {alerts})"]
+
+    with allure.step("Goods Receive -> Yes! Proceed. -> OK"):
+        try:
+            result = page.receive_goods_and_confirm()
+        except AssertionError as exc:
+            take_screenshot(driver, f"{tag}_receive_error")
+            return issues + [str(exc)]
+        take_screenshot(driver, f"{tag}_received")
+        allure.attach(
+            f"Confirmation dialog:\n{result['confirm_text']}\n\nResult dialog:\n{result['result_text']}",
+            name="goods_receive_dialogs", attachment_type=allure.attachment_type.TEXT,
+        )
+        m = re.search(r"No\.?\s*Of\s*Items\s*:?\s*(\d+)", result["confirm_text"], flags=re.IGNORECASE)
+        if m and int(m.group(1)) != expected_count:
+            issues.append(
+                f"Goods Receive confirmation shows No Of Items {m.group(1)}, but {expected_count} items are in the cart"
+            )
+        m = re.search(r"Total\s*value\s*:?\s*([\d,]+(?:\.\d+)?)", result["confirm_text"], flags=re.IGNORECASE)
+        if m and final_amt is not None and abs(to_number(m.group(1)) - final_amt) > AMOUNT_TOLERANCE:
+            issues.append(
+                f"Goods Receive confirmation shows Total value {m.group(1)}, but the Calc header Final Amount is "
+                f"{header['final_amount']!r}"
+            )
+        low = result["result_text"].lower()
+        if "success" not in low and "received" not in low:
+            issues.append(f"After 'Yes! Proceed.' the result dialog did not say it succeeded: {result['result_text']!r}")
+
+    with allure.step("Return Details page opens"):
+        try:
+            url = page.wait_for_return_details_page()
+        except Exception as exc:
+            take_screenshot(driver, f"{tag}_no_return_details")
+            return issues + [f"Return Details page did not open after OK: {exc}"]
+        row_text = page.first_return_row_text()
+        take_screenshot(driver, f"{tag}_return_details")
+        allure.attach(f"URL: {url}\nNewest row: {row_text}", name="return_details_newest_row",
+                      attachment_type=allure.attachment_type.TEXT)
+        if CUSTOMER_NAME.lower() not in row_text.lower():
+            issues.append(f"Newest Return Details row is not for {CUSTOMER_NAME!r}: {row_text!r}")
+        row_numbers = [to_number(n) for n in re.findall(r"[\d,]+(?:\.\d+)?", row_text)]
+        if final_amt is not None and not any(n is not None and abs(n - final_amt) <= AMOUNT_TOLERANCE for n in row_numbers):
+            issues.append(
+                f"Newest Return Details row does not show the returned amount {header['final_amount']!r}: {row_text!r}"
+            )
+
+    with allure.step("Hover Action -> Print -> credit note opens"):
+        try:
+            note = page.print_first_return_credit_note()
+        except Exception as exc:
+            take_screenshot(driver, f"{tag}_print_failed")
+            return issues + [f"Credit note did not open from Return Details (Action -> Print): {exc}"]
+        allure.attach(note["screenshot"], name="credit_note", attachment_type=allure.attachment_type.PNG)
+        allure.attach(f"URL: {note['url']}\nTitle: {note['title']}", name="credit_note_url",
+                      attachment_type=allure.attachment_type.TEXT)
+        if not note["url"] or note["url"] == "about:blank":
+            issues.append("Credit note tab opened but stayed blank")
+
+    return issues
+
+
 @allure.epic("DMS Application")
 @allure.feature("Sale Return")
 @allure.story("Remove an item: Calc header and View Selected Items must agree")
 @allure.severity(allure.severity_level.CRITICAL)
-@allure.title("Sale Return (Without Reference, Demo Dealer 4): select 3 items, remove 1 -> Calc header and View Selected Items match")
+@allure.title("Sale Return (Without Reference, Demo Dealer 4): select 3, remove 1 -> Calc header = View Selected -> Save -> Goods Receive -> Return Details -> credit note")
 @allure.tag("regression", "salereturn")
 def test_salereturn_select_three_remove_one_header_matches_view_selected(driver):
     issues = []
@@ -121,6 +196,8 @@ def test_salereturn_select_three_remove_one_header_matches_view_selected(driver)
             f"with 3 items, now {header['final_amount']!r}"
         )
 
+    issues += _receive_goods_and_print_credit_note(page, driver, 2, header, "sr_remove_3_06")
+
     if issues:
         allure.attach("\n".join(issues), name="issues_found", attachment_type=allure.attachment_type.TEXT)
         pytest.fail("\n".join(issues))
@@ -130,7 +207,7 @@ def test_salereturn_select_three_remove_one_header_matches_view_selected(driver)
 @allure.feature("Sale Return")
 @allure.story("Remove an item, Save, close the popup, add an item: Calc header and View Selected Items must agree")
 @allure.severity(allure.severity_level.CRITICAL)
-@allure.title("Sale Return (Without Reference, Demo Dealer 4): select 5, remove 1, Save, close popup, add 1 -> Calc header and View Selected Items match")
+@allure.title("Sale Return (Without Reference, Demo Dealer 4): select 5, remove 1, Save, close, add 1 -> Calc header = View Selected -> Save -> Goods Receive -> Return Details -> credit note")
 @allure.tag("regression", "salereturn")
 def test_salereturn_five_remove_save_close_add_header_matches_view_selected(driver):
     issues = []
@@ -192,6 +269,8 @@ def test_salereturn_five_remove_save_close_add_header_matches_view_selected(driv
             f"After adding an item the Final Amount should go up: was {before_save['final_amount']!r} "
             f"with 4 items, now {header['final_amount']!r}"
         )
+
+    issues += _receive_goods_and_print_credit_note(page, driver, 5, header, "sr_remove_5_09")
 
     if issues:
         allure.attach("\n".join(issues), name="issues_found", attachment_type=allure.attachment_type.TEXT)
