@@ -9,11 +9,14 @@
 import re
 
 import allure
+import pytest
 
 from pages.bill_filter_page import BillFilterPage
 from utilities.allure_utils import step
 
-CUSTOMER_NAME = "Demo Dealer 4"
+CUSTOMER_NAME = "Demo Dealer 3"
+pytestmark = pytest.mark.xdist_group(name="dd3")  # parallel runs: one group per customer, never shared
+
 QTY = 1
 TOLERANCE = 1.0
 HEADER_FIELDS = ("total_item", "qty_pcs", "all_qty_pcs", "amount", "free_item", "total_scheme", "total_gst", "final_amount")

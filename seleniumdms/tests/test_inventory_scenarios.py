@@ -3,6 +3,7 @@ import re
 import time
 
 import allure
+import pytest
 
 from pages.product_page import ProductPage
 from pages.draft_page import DraftPage
@@ -17,6 +18,8 @@ from utilities.invoice_pdf import (
 from utilities.db import get_latest_order_for_client, get_order_products
 
 CUSTOMER_NAME = "Demo Dealer 4"
+pytestmark = pytest.mark.xdist_group(name="dd4")  # parallel runs: one group per customer, never shared
+
 
 
 def _to_float(value):

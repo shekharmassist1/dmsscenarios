@@ -21,7 +21,9 @@ from utilities.allure_utils import step
 from utilities.db import get_order_header, get_order_products
 from utilities.invoice_pdf import extract_line_item_count, extract_payable_amount, fetch_invoice_text
 
-CUSTOMER_NAME = "Demo Dealer 4"
+CUSTOMER_NAME = "Demo Dealer 3"
+pytestmark = pytest.mark.xdist_group(name="dd3")  # parallel runs: one group per customer, never shared
+
 QTY = 1
 TOLERANCE = 1.0
 

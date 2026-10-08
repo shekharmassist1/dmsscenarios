@@ -1,4 +1,4 @@
-"""End-to-end sale lifecycle scenarios for customer 'Demo Dealer 4':
+"""End-to-end sale lifecycle scenarios for customer 'Demo Dealer 3':
 
   Scenario A: sale (3 in-stock items) -> invoice -> My Sales -> Edit -> Add More (2 pop-ups) ->
               add 1 item -> Save -> Update -> verify My Sales, invoice and DB show 4 items
@@ -11,6 +11,7 @@ import re
 import time
 
 import allure
+import pytest
 
 from pages.my_sale_page import MySalePage
 from pages.product_page import ProductPage
@@ -20,7 +21,9 @@ from utilities.allure_utils import step
 from utilities.db import get_latest_return_for_client, get_order_header, get_order_products, get_return_products
 from utilities.invoice_pdf import extract_line_item_count, extract_payable_amount, fetch_invoice_text
 
-CUSTOMER_NAME = "Demo Dealer 4"
+CUSTOMER_NAME = "Demo Dealer 3"
+pytestmark = pytest.mark.xdist_group(name="dd3")  # parallel runs: one group per customer, never shared
+
 SALE_ITEMS = 3
 QTY = 1
 WAIT_BEFORE_RETURN = 20      # seconds, as in the manual steps (lets the new invoice become returnable)
@@ -142,7 +145,7 @@ def _verify_credit_note_and_db(driver, soft_assert, tag, expected_items, expecte
     details = ReturnDetailsPage(driver)
     with step(SaleReturnPage(driver), "Return Details: check the newest row"):
         url = details.wait_for_page()
-        row = details.newest_row()
+        row = details.newest_row(CUSTOMER_NAME)
         allure.attach(f"URL: {url}\nNewest row: {row}", name=f"{tag}_return_details_row",
                       attachment_type=allure.attachment_type.TEXT)
         party = details.column(row, "Party Name") or row.get("_text", "")
@@ -159,7 +162,7 @@ def _verify_credit_note_and_db(driver, soft_assert, tag, expected_items, expecte
             )
 
     with step(SaleReturnPage(driver), "Return Details: Action -> Print -> verify the credit note"):
-        note = details.open_newest_credit_note()
+        note = details.open_newest_credit_note(CUSTOMER_NAME)
         try:
             note_text = fetch_invoice_text(driver, note["url"])
         except Exception as exc:

@@ -1,12 +1,15 @@
 import re
 
 import allure
+import pytest
 
 from pages.product_page import ProductPage
 from pages.draft_page import DraftPage
 from utilities.allure_utils import step
 
-CUSTOMER_NAME = "Demo Dealer 4"
+CUSTOMER_NAME = "Demo Dealer 3"
+pytestmark = pytest.mark.xdist_group(name="dd3")  # parallel runs: one group per customer, never shared
+
 QUANTITIES = {0: 2, 1: 3}
 
 
@@ -19,7 +22,7 @@ def _to_float(value):
 @allure.severity(allure.severity_level.CRITICAL)
 @allure.title("Enter products -> Calc -> View Selected Items -> Print -> Save Draft")
 @allure.description(
-    "Selects customer 'Demo Dealer 4', enters quantities for two products, and cross-checks the Calc "
+    "Selects customer 'Demo Dealer 3', enters quantities for two products, and cross-checks the Calc "
     "summary, the View Selected Items overview, the Print Preview modal, and the saved draft "
     "(verified in the drafts list) against each other. Soft assertions are used so every check "
     "runs and all failures are reported together instead of stopping at the first one."

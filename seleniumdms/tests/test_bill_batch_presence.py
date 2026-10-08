@@ -2,11 +2,14 @@
 batch popup, and the batches' total inventory must equal the product's 'Pcs. Inv.'.
 A product with stock but no batch (or batches that don't add up) is a bug."""
 import allure
+import pytest
 
 from pages.bill_batch_page import BillBatchPage
 from utilities.allure_utils import step
 
-CUSTOMER_NAME = "Demo Dealer 4"
+CUSTOMER_NAME = "Demo Dealer 3"
+pytestmark = pytest.mark.xdist_group(name="dd3")  # parallel runs: one group per customer, never shared
+
 MAX_PRODUCTS = 40      # in-stock products to check per run (each needs its popup opened); raise to check more
 TOLERANCE = 0.5        # pieces
 

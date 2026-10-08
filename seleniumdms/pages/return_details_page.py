@@ -57,12 +57,19 @@ class ReturnDetailsPage:
         time.sleep(1)
         return self.driver.current_url
 
-    def newest_row(self):
-        """First (newest) row as {column header: cell text} plus '_text' (the whole row)."""
+    def _newest_row_element(self, customer=None):
+        """Newest row; when customer is given, the newest row whose text contains that customer
+        (in parallel runs another worker's return for a different customer may be on top)."""
         rows = self._rows()
-        if not rows:
+        if customer:
+            rows = [r for r in rows if customer.lower() in r.text.lower()]
+        return rows[0] if rows else None
+
+    def newest_row(self, customer=None):
+        """Newest row (for customer, if given) as {column header: cell text} plus '_text'."""
+        row = self._newest_row_element(customer)
+        if row is None:
             return {}
-        row = rows[0]
         table = row.find_element(By.XPATH, "./ancestor::table[1]")
         headers = [th.text.strip() for th in table.find_elements(By.CSS_SELECTOR, "thead th")]
         cells = [td.text.strip() for td in row.find_elements(By.TAG_NAME, "td")]
@@ -96,14 +103,13 @@ class ReturnDetailsPage:
                     continue
         return None
 
-    def open_newest_credit_note(self):
+    def open_newest_credit_note(self, customer=None):
         """Hover (else click) Action on the newest row, click 'Print' (and Print in a print dialog if
         one appears), switch to the new tab and return {'url', 'title', 'screenshot', 'main_handle'}.
         The caller reads the note and then calls close_credit_note(info)."""
-        rows = self._rows()
-        if not rows:
-            raise AssertionError("No rows with an Action button on the Return Details page")
-        row = rows[0]
+        row = self._newest_row_element(customer)
+        if row is None:
+            raise AssertionError(f"No Return Details row with an Action button{' for ' + customer if customer else ''}")
         toggle = row.find_elements(By.XPATH, self._ACTION_TOGGLE_XPATH)[0]
         self.driver.execute_script("arguments[0].scrollIntoView({block:'center'});", toggle)
         self.driver.execute_script(

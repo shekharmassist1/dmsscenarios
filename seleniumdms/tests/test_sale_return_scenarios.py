@@ -2,6 +2,7 @@ import re
 import time
 
 import allure
+import pytest
 
 from pages.product_page import ProductPage
 from pages.sale_return_page import SaleReturnPage
@@ -15,6 +16,8 @@ from utilities.db import (
 )
 
 CUSTOMER_NAME = "Demo Dealer 2"
+pytestmark = pytest.mark.xdist_group(name="dd2")  # parallel runs: one group per customer, never shared
+
 
 
 def _to_float(value):

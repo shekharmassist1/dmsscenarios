@@ -1,3 +1,4 @@
+import os
 import re
 import time
 
@@ -227,6 +228,11 @@ class ProductPage(BasePage):
                 raise AssertionError(
                     f"Customer '{name}' has no products available, and it is "
                     f"already the fallback customer -- no further fallback to try"
+                )
+            if os.environ.get("PYTEST_XDIST_WORKER_COUNT", "1") not in ("", "1"):
+                raise AssertionError(
+                    f"Customer '{name}' has no products available. The fallback to "
+                    f"'{self.FALLBACK_CUSTOMER}' is disabled in parallel runs (another worker may be using it)"
                 )
             self._select_customer_once(self.FALLBACK_CUSTOMER)
 

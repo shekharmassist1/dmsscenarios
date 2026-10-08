@@ -28,7 +28,7 @@ pipeline {
                         usernamePassword(credentialsId: 'dms-db',    usernameVariable: 'DB_USER',      passwordVariable: 'DB_PASSWORD'),
                         usernamePassword(credentialsId: 'dms-login', usernameVariable: 'DMS_USERNAME', passwordVariable: 'DMS_PASSWORD')
                     ]) {
-                        bat 'venv\\Scripts\\pytest tests -v -n 1 --junitxml=results.xml --html=report.html --self-contained-html --alluredir=allure-results'
+                        bat 'venv\\Scripts\\pytest tests -v -n 2 --dist loadgroup --durations=20 --junitxml=results.xml --html=report.html --self-contained-html --alluredir=allure-results'
                     }
                 }
             }

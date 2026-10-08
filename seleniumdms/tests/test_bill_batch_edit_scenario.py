@@ -4,12 +4,15 @@ if the batches differ, that is a bug."""
 import re
 
 import allure
+import pytest
 
 from pages.bill_batch_page import BillBatchPage
 from pages.my_sale_page import MySalePage
 from utilities.allure_utils import step
 
-CUSTOMER_NAME = "Demo Dealer 4"
+CUSTOMER_NAME = "Demo Dealer 3"
+pytestmark = pytest.mark.xdist_group(name="dd3")  # parallel runs: one group per customer, never shared
+
 QTY_PER_BATCH = 1
 # Optional: name (or part of the name) of a product that has 2+ batches with stock, e.g. "Vanilla Cup".
 # Leave empty to let the test search the grid for one (slower: it opens each row's batch popup).
