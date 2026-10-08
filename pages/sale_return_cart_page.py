@@ -385,59 +385,105 @@ class SaleReturnCartPage:
         self.js_click(box.find_element(By.XPATH, ".//button[translate(normalize-space(.),'ok','OK')='OK']"))
         return {"confirm_text": confirm_text, "result_text": result_text}
 
+    # Return Details page (screenshot): rows with an 'Action' dropdown in the Status column whose
+    # menu items are pill buttons labelled Action / Print / Create IRN / Remark.
+    _ACTION_TOGGLE_XPATH = (
+        ".//*[contains(@class,'dmsActionMenu')]"
+        " | .//*[self::button or self::a or self::span or self::div]"
+        "[normalize-space(.)='Action' and not(ancestor::*[contains(@class,'actionButtonsWrapper')])]"
+    )
+
+    def _return_rows(self):
+        rows = []
+        for r in self.driver.find_elements(By.CSS_SELECTOR, "table tbody tr"):
+            try:
+                if r.is_displayed() and r.find_elements(By.XPATH, self._ACTION_TOGGLE_XPATH):
+                    rows.append(r)
+            except StaleElementReferenceException:
+                continue
+        return rows
+
     def wait_for_return_details_page(self, timeout=90):
-        """After OK the app opens the Return Details page; wait until its rows (with an Action menu)
-        are shown. Returns the page URL."""
+        """After OK the app opens Return Details; wait until a row with an Action button is shown."""
         def _ready(d):
             if "ProductReceived" in d.current_url:
                 return False
-            return any(el.is_displayed() for el in d.find_elements(By.CSS_SELECTOR, "table tbody tr .dmsActionMenu"))
+            return bool(self._return_rows())
 
-        self.wait_until(_ready, timeout=timeout, message="Return Details page (with Action menus) never opened after OK")
+        self.wait_until(_ready, timeout=timeout, message="Return Details page (rows with Action) never opened after OK")
         time.sleep(1)
         return self.driver.current_url
 
-    def first_return_row_text(self):
-        rows = [r for r in self.driver.find_elements(By.CSS_SELECTOR, "table tbody tr")
-                if r.find_elements(By.CSS_SELECTOR, ".dmsActionMenu")]
-        return rows[0].text.strip() if rows else ""
-
-    def print_first_return_credit_note(self):
-        """Hover 'Action' on the newest (first) return row, click its Print icon, click Print in the
-        print dialog if one appears, and read the credit note opened in a new tab.
-        Returns {'url', 'title', 'screenshot'}; the tab is closed afterwards."""
-        rows = [r for r in self.driver.find_elements(By.CSS_SELECTOR, "table tbody tr")
-                if r.find_elements(By.CSS_SELECTOR, ".dmsActionMenu")]
+    def newest_return_row(self):
+        """First (newest) Return Details row as {column header: cell text}, plus '_text' (whole row)."""
+        rows = self._return_rows()
         if not rows:
-            raise AssertionError("No return rows with an Action menu on the Return Details page")
+            return {}
         row = rows[0]
-        menu = row.find_element(By.CSS_SELECTOR, ".dmsActionMenu")
-        self.driver.execute_script("arguments[0].scrollIntoView({block:'center'});", menu)
-        # The Action menu opens on mouse HOVER (jQuery mouseover), not on click.
-        self.driver.execute_script(
-            "arguments[0].dispatchEvent(new MouseEvent('mouseover', {bubbles: true, cancelable: true}));", menu
-        )
+        table = row.find_element(By.XPATH, "./ancestor::table[1]")
+        headers = [th.text.strip() for th in table.find_elements(By.CSS_SELECTOR, "thead th")]
+        cells = [td.text.strip() for td in row.find_elements(By.TAG_NAME, "td")]
+        data = {"_text": row.text.strip()}
+        for i, h in enumerate(headers):
+            if h and i < len(cells):
+                data[h] = cells[i]
+        return data
 
-        def _print_icon(d):
-            for icon in row.find_elements(
-                By.XPATH,
-                ".//div[contains(@class,'actionButtonsWrapper')]//*[self::span or self::a or self::i]["
-                "contains(@class,'GetInvoiceDetails') or contains(translate(@class,'PRINT','print'),'print') or "
-                "contains(translate(@title,'PRINT','print'),'print')]",
-            ):
+    @staticmethod
+    def column(data, *names):
+        """Value of the first header that matches any of names (case/space/punctuation-insensitive)."""
+        def norm(x):
+            return re.sub(r"[^a-z0-9]", "", x.lower())
+        wanted = [norm(n) for n in names]
+        for key, value in data.items():
+            if key != "_text" and norm(key) in wanted:
+                return value
+        return None
+
+    def _visible_print_item(self, row):
+        xpath = (
+            ".//*[self::a or self::button or self::li or self::span or self::div]"
+            "[normalize-space(.)='Print' or contains(@class,'GetInvoiceDetails')]"
+        )
+        # The dropdown can be rendered inside the row or appended elsewhere on the page.
+        for scope in (row, self.driver):
+            for el in scope.find_elements(By.XPATH, xpath if scope is row else "/" + xpath):
                 try:
-                    if icon.is_displayed():
-                        return icon
+                    if el.is_displayed():
+                        return el
                 except StaleElementReferenceException:
                     continue
-            return False
+        return None
 
-        icon = self.wait_until(_print_icon, timeout=15, message="Print icon never appeared after hovering Action")
+    def print_first_return_credit_note(self):
+        """Open the newest row's Action menu (hover, else click), click 'Print' (and Print in a print
+        dialog if one appears), and read the credit note opened in a new tab.
+        Returns {'url', 'title', 'screenshot'}; the tab is closed afterwards."""
+        rows = self._return_rows()
+        if not rows:
+            raise AssertionError("No rows with an Action button on the Return Details page")
+        row = rows[0]
+        toggle = row.find_elements(By.XPATH, self._ACTION_TOGGLE_XPATH)[0]
+        self.driver.execute_script("arguments[0].scrollIntoView({block:'center'});", toggle)
+        self.driver.execute_script(
+            "arguments[0].dispatchEvent(new MouseEvent('mouseover', {bubbles: true, cancelable: true}));", toggle
+        )
+        time.sleep(1)
+        item = self._visible_print_item(row)
+        if item is None:  # hover didn't open it -- click the Action button
+            self.js_click(toggle)
+            try:
+                item = self.wait_until(lambda d: self._visible_print_item(row), timeout=10)
+            except TimeoutException:
+                item = None
+        if item is None:
+            raise AssertionError("'Print' never appeared in the Action menu of the newest return row")
+
         handles_before = set(self.driver.window_handles)
         main_handle = self.driver.current_window_handle
-        self.js_click(icon)
+        self.js_click(item)
 
-        # Some screens first show a 'Print Preview!' dialog with a Print button; others open the tab directly.
+        # Some screens first show a print dialog with its own Print button; others open the tab directly.
         end = time.time() + 30
         while time.time() < end and len(self.driver.window_handles) <= len(handles_before):
             for box in self.driver.find_elements(*self.JCONFIRM_BOXES):
@@ -460,11 +506,8 @@ class SaleReturnCartPage:
         except TimeoutException:
             pass
         time.sleep(2)
-        info = {
-            "url": self.driver.current_url,
-            "title": self.driver.title,
-            "screenshot": self.driver.get_screenshot_as_png(),
-        }
+        info = {"url": self.driver.current_url, "title": self.driver.title,
+                "screenshot": self.driver.get_screenshot_as_png()}
         self.driver.close()
         self.driver.switch_to.window(main_handle)
         return info

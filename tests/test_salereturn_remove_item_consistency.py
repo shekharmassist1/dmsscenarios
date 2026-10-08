@@ -131,16 +131,26 @@ def _receive_goods_and_print_credit_note(page, driver, expected_count, header, t
         except Exception as exc:
             take_screenshot(driver, f"{tag}_no_return_details")
             return issues + [f"Return Details page did not open after OK: {exc}"]
-        row_text = page.first_return_row_text()
+        row = page.newest_return_row()
         take_screenshot(driver, f"{tag}_return_details")
-        allure.attach(f"URL: {url}\nNewest row: {row_text}", name="return_details_newest_row",
+        allure.attach(f"URL: {url}\nNewest row: {row}", name="return_details_newest_row",
                       attachment_type=allure.attachment_type.TEXT)
-        if CUSTOMER_NAME.lower() not in row_text.lower():
-            issues.append(f"Newest Return Details row is not for {CUSTOMER_NAME!r}: {row_text!r}")
-        row_numbers = [to_number(n) for n in re.findall(r"[\d,]+(?:\.\d+)?", row_text)]
-        if final_amt is not None and not any(n is not None and abs(n - final_amt) <= AMOUNT_TOLERANCE for n in row_numbers):
+
+        party = page.column(row, "Party Name") or row.get("_text", "")
+        if CUSTOMER_NAME.lower() not in party.lower():
+            issues.append(f"Newest Return Details row is not for {CUSTOMER_NAME!r}: Party Name {party!r}")
+
+        items_cell = page.column(row, "No. Of Items", "No Of Items")
+        if items_cell is not None and to_number(items_cell) != expected_count:
             issues.append(
-                f"Newest Return Details row does not show the returned amount {header['final_amount']!r}: {row_text!r}"
+                f"Return Details shows No. Of Items {items_cell!r}, but {expected_count} items were returned"
+            )
+
+        amount_cell = page.column(row, "Amount")
+        if amount_cell is not None and final_amt is not None and abs((to_number(amount_cell) or 0) - final_amt) > AMOUNT_TOLERANCE:
+            issues.append(
+                f"Return Details shows Amount {amount_cell!r}, but the Calc header Final Amount was "
+                f"{header['final_amount']!r}"
             )
 
     with allure.step("Hover Action -> Print -> credit note opens"):
