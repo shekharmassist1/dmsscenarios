@@ -1,0 +1,83 @@
+// Linux (Ubuntu server) pipeline for the main DMS Scenarios project (massist1).
+// The Windows pipeline stays in 'Jenkinsfile'. requirements.txt is not used here: it contains
+// Windows-only packages (pywin32), so only what the tests import is installed.
+pipeline {
+    agent any
+
+    options {
+        timestamps()
+        timeout(time: 3, unit: 'HOURS')
+    }
+
+    environment {
+        HEADLESS = 'true'
+    }
+
+    stages {
+        stage('Setup Python') {
+            steps {
+                    sh '''
+                        set -e
+                        export PATH="$HOME/.local/bin:$PATH"
+                        command -v uv >/dev/null 2>&1 || curl -LsSf https://astral.sh/uv/install.sh | sh
+                        [ -x .venv/bin/python ] || uv venv --python 3.12 .venv
+                        uv pip install --python .venv/bin/python selenium pytest pytest-xdist pytest-html allure-pytest openpyxl pandas pyodbc
+                    '''
+            }
+        }
+        stage('Run Tests') {
+            steps {
+                sh 'rm -rf results.xml report.html allure-results test-reports.zip'
+                sh '.venv/bin/pytest tests -v -n 1 --durations=20 --junitxml=results.xml --html=report.html --self-contained-html --alluredir=allure-results'
+            }
+        }
+    }
+
+    post {
+        always {
+            script {
+                def testResults = junit allowEmptyResults: true, testResults: 'results.xml'
+
+                try {
+                    allure commandline: 'allure', includeProperties: false, jdk: '', results: [[path: 'allure-results']]
+                } catch (Throwable e) {
+                    echo "Allure report not generated: ${e.message}"
+                }
+
+                def zipStatus = sh(returnStatus: true, script: 'zip -q test-reports.zip report.html results.xml')
+                if (zipStatus != 0) {
+                    echo "Could not create test-reports.zip, sending email without attachment"
+                }
+
+                def total = testResults ? testResults.totalCount : 0
+                def failed = testResults ? testResults.failCount : 0
+                def skipped = testResults ? testResults.skipCount : 0
+                def passed = total - failed - skipped
+                def passRate = total > 0 ? String.format("%.1f", (passed / (float) total) * 100) : "N/A"
+                def statusColor = currentBuild.currentResult == 'SUCCESS' ? '#2e7d32' : '#c62828'
+
+                emailext(
+                    subject: "Jenkins Build #${env.BUILD_NUMBER} - ${currentBuild.currentResult} - ${env.JOB_NAME}",
+                    body: """
+                        <div style="font-family: Arial, sans-serif; max-width: 600px;">
+                            <h2 style="color: ${statusColor}; margin-bottom: 4px;">Build ${env.BUILD_NUMBER}: ${currentBuild.currentResult}</h2>
+                            <p style="color: #555; margin-top:0;">DMS Selenium Test Suite &mdash; ${env.JOB_NAME} (Linux server)</p>
+                            <table style="border-collapse: collapse; width: 100%; margin: 16px 0;">
+                                <tr style="background:#f5f5f5;"><td style="padding:8px; font-weight:bold;">Total Tests</td><td style="padding:8px;">${total}</td></tr>
+                                <tr><td style="padding:8px; font-weight:bold; color:#2e7d32;">Passed</td><td style="padding:8px;">${passed}</td></tr>
+                                <tr style="background:#f5f5f5;"><td style="padding:8px; font-weight:bold; color:#c62828;">Failed</td><td style="padding:8px;">${failed}</td></tr>
+                                <tr><td style="padding:8px; font-weight:bold; color:#f9a825;">Skipped</td><td style="padding:8px;">${skipped}</td></tr>
+                                <tr style="background:#f5f5f5;"><td style="padding:8px; font-weight:bold;">Pass Rate</td><td style="padding:8px;">${passRate}%</td></tr>
+                            </table>
+                            <p><a href="${env.BUILD_URL}" style="color:#1565c0;">View Build in Jenkins</a></p>
+                            <p style="color:#777; font-size:13px;">Full HTML report and JUnit results are attached as test-reports.zip.</p>
+                        </div>
+                    """,
+                    mimeType: 'text/html',
+                    to: '$DEFAULT_RECIPIENTS',
+                    attachmentsPattern: 'test-reports.zip'
+                )
+            }
+        }
+    }
+}
