@@ -124,8 +124,12 @@ def test_bill_enter_key_selects_multiple_items_on_later_page(driver):
 
         lost = [code for code, q in ((item_a["item_code"], qty_a), (item_b["item_code"], qty_b)) if _num(q) != QTY]
         selected_ok = (_num(total_item) == 2) and not lost
-        if selected_codes:
+        # View Selected lists SKU codes (e.g. FGIIJB020) while the grid label gives the barcode (8901...),
+        # so only compare codes when they are in the same format; otherwise count the rows.
+        if selected_codes and (item_a["item_code"] in selected_codes or item_b["item_code"] in selected_codes):
             selected_ok = selected_ok and item_a["item_code"] in selected_codes and item_b["item_code"] in selected_codes
+        elif selected_codes:
+            selected_ok = selected_ok and len(selected_codes) == 2
         if not selected_ok:
             issues.append(
                 "ISSUE 1: selecting items with ENTER keeps only one item at a time -- "

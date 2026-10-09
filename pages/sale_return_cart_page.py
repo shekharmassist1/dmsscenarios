@@ -229,7 +229,14 @@ class SaleReturnCartPage:
         for i in range(self.row_count()):
             if len(picked) >= count:
                 break
-            info = self.row_info(i)
+            try:
+                info = self.row_info(i)
+            except StaleElementReferenceException:  # grid redrew under us; read the row again
+                time.sleep(1)
+                try:
+                    info = self.row_info(i)
+                except Exception:
+                    continue
             if info["variant_id"] in seen:
                 continue
             seen.add(info["variant_id"])

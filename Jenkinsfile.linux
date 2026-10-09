@@ -10,7 +10,8 @@ pipeline {
     }
 
     environment {
-        HEADLESS = 'true'
+        // Headed Chrome on a virtual screen (Xvfb): the menu navigation in this project fails headless.
+        HEADLESS = 'false'
     }
 
     stages {
@@ -28,7 +29,7 @@ pipeline {
         stage('Run Tests') {
             steps {
                 sh 'rm -rf results.xml report.html allure-results test-reports.zip'
-                sh '.venv/bin/pytest tests -v -n 1 --durations=20 --junitxml=results.xml --html=report.html --self-contained-html --alluredir=allure-results'
+                sh 'xvfb-run -a --server-args="-screen 0 1920x1080x24" .venv/bin/pytest tests -v -n 1 --durations=20 --junitxml=results.xml --html=report.html --self-contained-html --alluredir=allure-results'
             }
         }
     }
