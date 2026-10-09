@@ -50,13 +50,16 @@ def get_order_products(order_id):
         return _rows_to_dicts(cursor, cursor.fetchall())
 
 
-def get_latest_order_for_client(client_name):
+def get_latest_order_for_client(client_name, order_type="sale"):
+    """Newest order of the given OrderType for a customer. order_dtls also holds 'Draft' and
+    'PrintPreview' records (created by Save Draft / Print), so without the type filter the
+    'latest order' was often a draft or a print preview rather than the sale just made."""
     with get_connection() as conn:
         cursor = conn.cursor()
         cursor.execute(
             "SELECT TOP 1 * FROM order_dtls WHERE Client_Name = ? AND IsDeleted = 0 "
-            "ORDER BY Order_Id DESC",
-            client_name,
+            "AND LOWER(OrderType) = LOWER(?) ORDER BY Order_Id DESC",
+            client_name, order_type,
         )
         row = cursor.fetchone()
         if row is None:
