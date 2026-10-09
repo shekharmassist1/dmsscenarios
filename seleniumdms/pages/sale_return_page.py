@@ -131,6 +131,12 @@ class SaleReturnPage(BasePage):
         self._wait_table_settled(wrapper)
 
         row_xpath = f".//tbody/tr[td[normalize-space(.)='{name}']]"
+        # On a fast machine the table can look 'settled' before the search results arrive, so give
+        # the exact row up to 20s to appear before falling back to paging (seen on the Linux server).
+        try:
+            self.wait_until(lambda d: wrapper.find_elements(By.XPATH, row_xpath), timeout=20)
+        except Exception:
+            pass
         for _ in range(20):
             rows = wrapper.find_elements(By.XPATH, row_xpath)
             if rows:
