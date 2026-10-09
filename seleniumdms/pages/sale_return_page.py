@@ -29,6 +29,9 @@ class SaleReturnPage(BasePage):
 
     PRODUCT_ROWS = (By.CSS_SELECTOR, "#productlist tbody tr")
     SALEABLE_QTY_INPUTS = (By.CSS_SELECTOR, "#productlist tbody tr input.C1")
+    # With Reference: the sold qty is shown read-only in 'Saled Qty'; 'Select All' copies it into the
+    # Qty boxes (there is no 'Full Sale Return' button any more -- finish with Save -> Goods Receive).
+    SELECT_ALL_BUTTON = (By.CSS_SELECTOR, "input.btnSelectAllProduct")
 
     CALC_BUTTON = (By.ID, "lblCalculate")
     SUMMARY_TOTAL_ITEM = (By.CSS_SELECTOR, "#divitem span")
@@ -256,8 +259,45 @@ class SaleReturnPage(BasePage):
         )
         self.js_click(select_btn)
         self.wait_for_grid_loaded()
-        self.wait_for_prefilled_quantities()
+        # Quantities are NOT pre-filled any more (the Qty boxes start empty; use select_all_reference_items).
         return self
+
+    def select_all_reference_items(self, timeout=30):
+        """Click 'Select All' on a With Reference return so every invoice item gets its sold qty,
+        then wait until the Qty boxes are filled. Returns True if quantities appeared."""
+        self.dismiss_inventory_alert(timeout=1)
+        buttons = [b for b in self.find_all(self.SELECT_ALL_BUTTON) if b.is_displayed()]
+        if not buttons:
+            raise AssertionError("'Select All' button not found on the With Reference return")
+        self.js_click(buttons[0])
+        time.sleep(1)
+        self.dismiss_inventory_alert(timeout=2)
+        filled = self._wait_for_any_qty(timeout)
+        if not filled:
+            print("No Qty box was filled after clicking Select All")
+        return filled
+
+    def _wait_for_any_qty(self, timeout):
+        def _has_qty(d):
+            for inp in d.find_elements(*self.SALEABLE_QTY_INPUTS):
+                try:
+                    value = (inp.get_attribute("value") or "").strip()
+                    if value and float(value) > 0:
+                        return True
+                except (ValueError, StaleElementReferenceException):
+                    continue
+            return False
+        try:
+            self.wait_until(_has_qty, timeout=timeout, message="")
+            return True
+        except Exception:
+            return False
+
+    def complete_return_with_save(self):
+        """Save -> Goods Receive -> returns the 'Return Confirm' text (call confirm_receive_proceed next)."""
+        self.click_save()
+        self.click_receive_goods()
+        return self.get_receive_confirm_text()
 
     def wait_for_prefilled_quantities(self, timeout=45):
         """In the 'With Reference' flow the grid rows appear first and the originally sold quantities

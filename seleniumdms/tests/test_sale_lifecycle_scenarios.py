@@ -333,32 +333,19 @@ def test_sale_then_full_return_with_reference(logged_in_driver, soft_assert):
     sale = _create_sale_and_read_invoice(logged_in_driver, soft_assert, "B")
     page, invoice = _open_with_reference(logged_in_driver, soft_assert, sale, "B")
 
-    with step(page, "Calculate (all sold items pre-filled)"):
+    with step(page, "Click Select All (copies each item's sold qty into Qty) and Calculate"):
+        soft_assert.check_true(page.select_all_reference_items(), "Select All should fill the Qty boxes")
         page.click_calc()
         summary = page.get_summary()
         allure.attach(str(summary), name="B_return_calc", attachment_type=allure.attachment_type.TEXT)
         soft_assert.check_equal(summary["total_item"], str(SALE_ITEMS), "Full return: Calc Total Item")
 
-    with step(page, "Click Full, save and proceed"):
-        page.click(page.FULL_SALE_RETURN_BUTTON)
-        try:
-            box = page._visible_box_containing("Full Sale Return", timeout=15)
-            confirm_text = box.text.strip()
-            allure.attach(confirm_text, name="B_full_return_confirm", attachment_type=allure.attachment_type.TEXT)
-            soft_assert.check_true(
-                str(sale["order_id"]) in confirm_text,
-                f"Full return confirmation should reference order {sale['order_id']}: {confirm_text!r}",
-            )
-            page.confirm_full_return_proceed()
-        except Exception:
-            # Some builds fill the quantities with 'Full' and then go through Save -> Goods Receive.
-            page.click_save()
-            page.click_receive_goods()
-            confirm_text = page.get_receive_confirm_text()
-            allure.attach(confirm_text, name="B_return_confirm", attachment_type=allure.attachment_type.TEXT)
-            soft_assert.check_true(f"No Of Items : {SALE_ITEMS}" in confirm_text,
-                                   f"Return Confirm should show {SALE_ITEMS} items: {confirm_text!r}")
-            page.confirm_receive_proceed()
+    with step(page, "Save -> Goods Receive -> Yes! Proceed."):
+        confirm_text = page.complete_return_with_save()
+        allure.attach(confirm_text, name="B_return_confirm", attachment_type=allure.attachment_type.TEXT)
+        soft_assert.check_true(f"No Of Items : {SALE_ITEMS}" in confirm_text,
+                               f"Return Confirm should show {SALE_ITEMS} items: {confirm_text!r}")
+        page.confirm_receive_proceed()
         msg = page.get_success_message()
         allure.attach(msg, name="B_success", attachment_type=allure.attachment_type.TEXT)
         soft_assert.check_true("success" in msg.lower(), f"Unexpected result message: {msg!r}")
@@ -378,7 +365,8 @@ def test_sale_then_partial_return_with_reference(logged_in_driver, soft_assert):
     page, invoice = _open_with_reference(logged_in_driver, soft_assert, sale, "C")
     returned = SALE_ITEMS - 1
 
-    with step(page, "Partial return: remove one item from the return (keep the others)"):
+    with step(page, "Partial return: Select All, then remove one item (keep the others)"):
+        soft_assert.check_true(page.select_all_reference_items(), "Select All should fill the Qty boxes")
         removed = page.enter_saleable_qty(SALE_ITEMS - 1, "")
         allure.attach(removed, name="C_item_not_returned", attachment_type=allure.attachment_type.TEXT)
 
@@ -398,9 +386,7 @@ def test_sale_then_partial_return_with_reference(logged_in_driver, soft_assert):
         page.close_selected_items()
 
     with step(page, "Save -> Goods Receive -> Yes! Proceed. -> OK"):
-        page.click_save()
-        page.click_receive_goods()
-        confirm_text = page.get_receive_confirm_text()
+        confirm_text = page.complete_return_with_save()
         allure.attach(confirm_text, name="C_return_confirm", attachment_type=allure.attachment_type.TEXT)
         soft_assert.check_true(f"No Of Items : {returned}" in confirm_text,
                                f"Return Confirm should show {returned} items: {confirm_text!r}")

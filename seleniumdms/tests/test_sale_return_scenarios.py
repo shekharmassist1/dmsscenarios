@@ -330,6 +330,10 @@ def test_scenario2_with_reference_full_return_verified_against_original_sale(log
             "with the originally sold quantities (confirmed live: C1 arrives pre-populated)",
         )
 
+    with step(page, "Click Select All (copies each item's sold qty into Qty)"):
+        filled = page.select_all_reference_items()
+        soft_assert.check_true(filled, "Select All should fill the Qty boxes with the sold quantities")
+
     with step(page, "Click Calculate and get the details"):
         page.click_calc()
         summary = page.get_summary()
@@ -347,17 +351,16 @@ def test_scenario2_with_reference_full_return_verified_against_original_sale(log
         )
         page.close_selected_items()
 
-    with step(page, "Click Full Sale Return and confirm"):
-        # Confirmed live: the 'With Reference' flow has no Print/Save/Receive Goods step at all --
-        # it finalizes directly via a single 'Full Sale Return' button.
-        page.click_full_sale_return()
-        confirm_text = page.get_full_return_confirm_text()
-        allure.attach(confirm_text, name="full_return_confirm_text", attachment_type=allure.attachment_type.TEXT)
+    with step(page, "Save -> Goods Receive -> Return Confirm -> Proceed"):
+        # The With Reference flow now ends like Without Reference: Save, Goods Receive, Proceed
+        # (the old 'Full Sale Return' button no longer exists).
+        confirm_text = page.complete_return_with_save()
+        allure.attach(confirm_text, name="return_confirm_text", attachment_type=allure.attachment_type.TEXT)
         soft_assert.check_true(
-            f"#{invoice['order_id']}" in confirm_text,
-            f"Confirmation dialog should reference the original order #{invoice['order_id']}, got: {confirm_text!r}",
+            f"No Of Items : {invoice['noofitem']}" in confirm_text,
+            f"Return Confirm should show {invoice['noofitem']} items, got: {confirm_text!r}",
         )
-        page.confirm_full_return_proceed()
+        page.confirm_receive_proceed()
 
     with step(page, "Read the success message and verify the completed return against the database"):
         success_msg = page.get_success_message()
@@ -708,6 +711,10 @@ def test_scenario7_with_reference_over_three_items_verify_item_count_consistency
             row_count, item_counts["with_reference_invoice_list"],
             "Product page row count should match the referenced invoice's item count",
         )
+
+    with step(page, "Click Select All (copies each item's sold qty into Qty)"):
+        filled = page.select_all_reference_items()
+        soft_assert.check_true(filled, "Select All should fill the Qty boxes with the sold quantities")
 
     with step(page, "Click Calculate and verify the item count"):
         page.click_calc()

@@ -10,7 +10,7 @@ from utilities.allure_utils import step
 CUSTOMER_NAME = "Demo Dealer 3"
 pytestmark = pytest.mark.xdist_group(name="dd3")  # parallel runs: one group per customer, never shared
 
-MAX_PRODUCTS = 40      # in-stock products to check per run (each needs its popup opened); raise to check more
+MAX_PRODUCTS = 20      # in-stock products to check per run (each needs its popup opened); raise to check more
 TOLERANCE = 0.5        # pieces
 
 

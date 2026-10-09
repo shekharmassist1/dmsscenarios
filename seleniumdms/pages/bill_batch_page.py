@@ -79,10 +79,15 @@ class BillBatchPage(BillUnitApplyPage):
         time.sleep(1)
         alloc = {}
         text = box.text
-        for r in self.batch_rows(box, unit):
-            q = _num(r["qty"])
-            if q:
-                alloc[r["batch"]] = q
+        # Read the column for the requested unit; if it is empty, use the other one (the popup
+        # may show the split in whichever unit the row is currently in).
+        for column in (unit, "carton" if unit == "piece" else "piece"):
+            for r in self.batch_rows(box, column):
+                q = _num(r["qty"])
+                if q:
+                    alloc[r["batch"]] = q
+            if alloc:
+                break
         self.close_popup_without_applying(box)
         return alloc, text
 
@@ -130,21 +135,38 @@ class BillBatchPage(BillUnitApplyPage):
             )
         return found
 
+    def _set_value(self, inp, value):
+        """Type a value; if the box refuses keyboard input, set it by script and fire the events
+        the page listens to."""
+        try:
+            self.js_click(inp)
+            inp.clear()
+            if value != "":
+                inp.send_keys(str(value))
+            inp.send_keys(Keys.TAB)
+        except Exception:
+            self.driver.execute_script(
+                "var el = arguments[0]; el.value = arguments[1];"
+                "['input','keyup','change','blur'].forEach(function(e){"
+                "  el.dispatchEvent(new Event(e, {bubbles: true})); });",
+                inp, str(value),
+            )
+        time.sleep(0.3)
+
     def split_across_batches(self, row_index, allocation, unit="piece"):
-        """Open the row's hamburger, put allocation[batch] in each listed batch's qty box for the
-        unit (Quantity for piece, Carton Qty for carton; others cleared), and click Apply.
-        Returns (popup unit shown in the title, any alert text shown after Apply)."""
+        """Open the row's hamburger, put allocation[batch] in each listed batch's qty box and click
+        Apply. The column used follows the unit shown in the popup title (Quantity for Piece,
+        Carton Qty for Carton) -- the other column is read-only. Returns (popup unit, alert text)."""
         box = self.open_hamburger(row_index)
         time.sleep(1)
         shown_unit = self.popup_unit(box)
-        for r in self.batch_rows(box, unit):
-            inp = r["input"]
-            self.js_click(inp)
-            inp.clear()
-            if r["batch"] in allocation:
-                inp.send_keys(str(allocation[r["batch"]]))
-            inp.send_keys(Keys.TAB)
-            time.sleep(0.3)
+        column = "carton" if (shown_unit or unit).startswith("cart") else "piece"
+        rows = self.batch_rows(box, column)
+        if not any(r["input"].is_enabled() and not r["input"].get_attribute("readonly") for r in rows):
+            other = "piece" if column == "carton" else "carton"
+            rows = self.batch_rows(box, other) or rows
+        for r in rows:
+            self._set_value(r["input"], allocation.get(r["batch"], ""))
         apply_btn = box.find_element(By.XPATH, ".//button[normalize-space(.)='Apply'] | .//*[@value='Apply']")
         self.js_click(apply_btn)
         time.sleep(1.5)

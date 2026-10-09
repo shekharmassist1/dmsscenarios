@@ -220,7 +220,13 @@ class ProductPage(BasePage):
         raise TimeoutException(f"Customer row for '{name}' never appeared in the search results")
 
     def select_customer(self, name):
-        self._select_customer_once(name)
+        # The customer list sometimes redraws mid-search (seen once in a 2-worker run): reload the
+        # page and try once more before giving up.
+        try:
+            self._select_customer_once(name)
+        except TimeoutException:
+            self.open()
+            self._select_customer_once(name)
 
         alert_message = self.dismiss_blocking_alert()
         if alert_message and "product not exist" in alert_message.lower():
