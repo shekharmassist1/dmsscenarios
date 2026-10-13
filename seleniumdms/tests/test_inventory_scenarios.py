@@ -388,7 +388,7 @@ def test_scenario5_correct_insufficient_item_then_check_item_count(logged_in_dri
 @allure.epic("Bill / New Invoice")
 @allure.feature("Inventory mismatch bugs")
 @allure.severity(allure.severity_level.CRITICAL)
-@allure.title("Scenario 7 (Incorrect Inventory): Select All override -> Calc -> Save Draft -> Order Again -> Calc -> View Selected")
+@allure.title("Scenario 7 (Incorrect Inventory): enter 4 in two items, overwrite with 2 -> Calc -> Save Draft -> Order Again -> Calc -> View Selected")
 def test_scenario7_select_all_override_then_save_draft_and_order_again(logged_in_driver, soft_assert):
     page = ProductPage(logged_in_driver)
     with step(page, f"Open product page and select customer '{CUSTOMER_NAME}'"):
@@ -415,15 +415,22 @@ def test_scenario7_select_all_override_then_save_draft_and_order_again(logged_in
             soft_assert.check(False, f"Entering initial quantities (4 each) failed: {exc}")
             return
 
-    with step(page, "Use Select All to re-enter 2 in each of the same two products"):
+    # Bill/New Invoice has no 'Select All' (that exists only on Sale Return, confirmed on the live
+    # page), so the override is done the way a user would: overwrite the same two qty boxes with 2.
+    with step(page, "Overwrite the quantity in the same two products with 2"):
         try:
-            page.open_select_all_modal()
-            page.uncheck_all_in_select_all_modal()
-            for product_id in product_ids:
-                page.set_select_all_modal_quantity(product_id, 2)
-            page.confirm_select_all_modal()
+            for row_idx in rows:
+                page.enter_quantity(row_idx, 2)
+            shown = {page.product_row(r)["item_code"]: (page.product_row(r)["qty_input"].get_attribute("value") or "").strip()
+                     for r in rows}
+            allure.attach(str(shown), name="qty_after_overwrite", attachment_type=allure.attachment_type.TEXT)
+            for code, value in shown.items():
+                soft_assert.check_true(
+                    value in ("2", "2.0", "2.00"),
+                    f"{code}: qty box should show the new value 2 after overwriting 4, got {value!r}",
+                )
         except Exception as exc:
-            soft_assert.check(False, f"Select All -> enter 2 in each step failed: {exc}")
+            soft_assert.check(False, f"Overwriting the quantity with 2 failed: {exc}")
 
     summary = _calculate_and_check_count(page, soft_assert, len(product_ids), "initial")
     _save_draft_reopen_and_verify(page, soft_assert, len(product_ids), summary)
