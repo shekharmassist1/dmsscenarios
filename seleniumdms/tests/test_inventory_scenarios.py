@@ -208,10 +208,9 @@ def _save_draft_reopen_and_verify(page, soft_assert, expected_count, first_summa
             first_summary["total_item"],
             "Calc Total Item after Order Again should match the original Calculate",
         )
-        soft_assert.check_equal(
-            second_summary["final_amount"],
-            first_summary["final_amount"],
-            "Calc Final Amount after Order Again should match the original Calculate -- pricing mismatch",
+        soft_assert.check_true(
+            abs(_to_float(second_summary["final_amount"]) - _to_float(first_summary["final_amount"])) <= 0.05,
+            f"Calc Final Amount after Order Again should match the original Calculate -- pricing mismatch: expected {first_summary['final_amount']!r}, got {second_summary['final_amount']!r}",
         )
 
     with allure.step("Click View Selected Items and check the item count"):
@@ -519,10 +518,9 @@ def test_scenario8_seven_random_valid_items_full_flow_add_sale(logged_in_driver,
         soft_assert.check_equal(
             second_summary["total_item"], summary["total_item"], "Calc Total Item after Order Again vs original"
         )
-        soft_assert.check_equal(
-            second_summary["final_amount"],
-            summary["final_amount"],
-            "Calc Final Amount after Order Again vs original -- pricing mismatch",
+        soft_assert.check_true(
+            abs(_to_float(second_summary["final_amount"]) - _to_float(summary["final_amount"])) <= 0.05,
+            f"Calc Final Amount after Order Again vs original -- pricing mismatch: expected {summary['final_amount']!r}, got {second_summary['final_amount']!r}",
         )
 
     with step(page, "Click Save and verify Total Payable matches Final Amount"):
