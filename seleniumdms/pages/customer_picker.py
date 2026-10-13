@@ -144,35 +144,52 @@ def _set_beat(page, sel, value):
     time.sleep(1.5)
 
 
-def _ensure_all_beat(page):
-    """Select the 'All' beat if there is one. Returns the beat options for a beat-by-beat fallback."""
+def _total_entries(wrapper):
+    """Total customers loaded in the table ('Filtered From N Total Entries' or 'Of N Entries')."""
+    text = _info_text(wrapper)
+    m = re.search(r"from\s+([\d,]+)\s+total", text, flags=re.I) or re.search(r"of\s+([\d,]+)\s+entries", text, flags=re.I)
+    return int(m.group(1).replace(",", "")) if m else None
+
+
+def _force_all_beat(page, min_customers=2, timeout=20):
+    """Select the 'ALL' beat -- ALWAYS re-triggered, even if the dropdown already shows ALL, because the
+    beat is stored per login on the server and the three parallel workers share one login, so the
+    table can be loaded for a different beat than the dropdown shows. Then wait until the table holds
+    more than one customer. Never selects a single beat (that would change it for the other workers)."""
     sel = _beat_select(page)
     if sel is None:
-        return None, []
+        return False
     options = _beat_options(sel)
     all_opt = next((v for v, t in options if re.match(r"^\s*(all|--\s*all|select all)", t, flags=re.I)), None)
-    current = sel.get_attribute("value") or ""
-    if all_opt is not None and current != all_opt:
-        _set_beat(page, sel, all_opt)
-    return sel, options
+    if all_opt is None:
+        return False
+    _set_beat(page, sel, all_opt)
+    end = time.time() + timeout
+    while time.time() < end:
+        try:
+            _, wrapper = _customer_table(page, timeout=5)
+            total = _total_entries(wrapper)
+            if total is not None and total >= min_customers:
+                return True
+        except Exception:
+            pass
+        time.sleep(0.5)
+    return False
 
 
 def pick_customer(page, name, max_pages=20):
-    beat_sel, beat_options = _ensure_all_beat(page)
+    _force_all_beat(page)
     try:
         return _pick_customer_in_current_beat(page, name, max_pages)
-    except TimeoutException as first_error:
-        # Not in the current beat: try each beat in turn (the customer list only shows one beat at a time).
-        for value, text in beat_options:
-            if not value:
-                continue
-            try:
-                sel = _beat_select(page) or beat_sel
-                _set_beat(page, sel, value)
-                return _pick_customer_in_current_beat(page, name, 2, quick=True)
-            except Exception:
-                continue
-        raise first_error
+    except TimeoutException:
+        # The beat may have been switched by another worker in between: force ALL again, reload, retry once.
+        try:
+            page.driver.refresh()
+            time.sleep(2)
+        except Exception:
+            pass
+        _force_all_beat(page)
+        return _pick_customer_in_current_beat(page, name, max_pages)
 
 
 def _pick_customer_in_current_beat(page, name, max_pages=20, quick=False):
