@@ -6,6 +6,7 @@ from selenium.common.exceptions import StaleElementReferenceException, TimeoutEx
 from selenium.webdriver.common.keys import Keys
 
 from pages.base_page import BasePage
+from pages.customer_picker import pick_customer
 from utilities.performance import attach_page_performance
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.common.by import By
@@ -177,53 +178,8 @@ class ProductPage(BasePage):
             time.sleep(0.3)
 
     def _select_customer_once(self, name):
-        """The customer search matches each word separately across all columns (so 'Demo Dealer 4'
-        also returns 'Demo Dealer 11' etc. and can push the wanted customer onto page 2). So:
-        1) switch THIS table's Show dropdown to All, 2) search, 3) look for an EXACT name match,
-        and only as a fallback click Next page by page until it is found."""
-        search, wrapper = self._customer_table()
-
-        # 1) Show all customers on one page (scoped to the customer table only).
-        try:
-            length_select = wrapper.find_elements(By.CSS_SELECTOR, "select[name$='_length']") or \
-                wrapper.find_elements(By.CSS_SELECTOR, ".dataTables_length select")
-            if length_select:
-                Select(length_select[0]).select_by_value("-1")
-                self._wait_table_settled(wrapper)
-        except Exception as exc:
-            print(f"Could not switch customer list to 'All' (will page through instead): {exc}")
-
-        # 2) Search, and wait for the filter to finish.
-        search.clear()
-        search.send_keys(name)
-        self._wait_table_settled(wrapper)
-
-        # 3) Exact match on the current page, else click Next and try again.
-        row_xpath = f".//tbody/tr[td[normalize-space(.)='{name}']]"
-        # On a fast machine the table can look 'settled' before the search results arrive, so give
-        # the exact row up to 20s to appear before falling back to paging (seen on the Linux server).
-        try:
-            self.wait_until(lambda d: wrapper.find_elements(By.XPATH, row_xpath), timeout=20)
-        except Exception:
-            pass
-        for _ in range(20):  # up to 20 pages
-            rows = wrapper.find_elements(By.XPATH, row_xpath)
-            if rows:
-                select_btn = rows[0].find_element(
-                    By.XPATH,
-                    ".//a[contains(normalize-space(.),'Select')] | .//button[contains(normalize-space(.),'Select')]",
-                )
-                self.js_click(select_btn)
-                return
-            next_btn = wrapper.find_elements(By.CSS_SELECTOR, ".paginate_button.next")
-            if not next_btn or "disabled" in (next_btn[0].get_attribute("class") or ""):
-                break
-            # With Bootstrap-styled tables the click handler sits on the inner <a>, not the <li>.
-            target = next_btn[0].find_elements(By.TAG_NAME, "a") or [next_btn[0]]
-            self.js_click(target[0])
-            self._wait_table_settled(wrapper)
-
-        raise TimeoutException(f"Customer row for '{name}' never appeared in the search results")
+        """Exact-name customer selection that pages through the results (see pages/customer_picker.py)."""
+        pick_customer(self, name)
 
     def select_customer(self, name):
         # The customer list sometimes redraws mid-search (seen once in a 2-worker run): reload the

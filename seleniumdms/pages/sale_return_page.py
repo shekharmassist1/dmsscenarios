@@ -8,6 +8,7 @@ from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import Select
 
 from pages.base_page import BasePage
+from pages.customer_picker import pick_customer
 
 
 class SaleReturnPage(BasePage):
@@ -112,48 +113,8 @@ class SaleReturnPage(BasePage):
         return search, wrapper
 
     def _select_customer_once(self, name):
-        """The search matches each word separately across all columns ('Demo Dealer 2' also returns
-        'Demo Dealer 11/12/20...'), which can push the wanted customer onto page 2. So: show All rows
-        in this table, search, wait for the redraw, take an EXACT name match, and page through with
-        Next only as a fallback."""
-        search, wrapper = self._customer_table()
-        try:
-            selects = wrapper.find_elements(By.CSS_SELECTOR, "select[name$='_length']") or \
-                wrapper.find_elements(By.CSS_SELECTOR, ".dataTables_length select")
-            if selects:
-                Select(selects[0]).select_by_value("-1")
-                self._wait_table_settled(wrapper)
-        except Exception as exc:
-            print(f"Could not switch customer list to 'All' (will page through instead): {exc}")
-
-        search.clear()
-        search.send_keys(name)
-        self._wait_table_settled(wrapper)
-
-        row_xpath = f".//tbody/tr[td[normalize-space(.)='{name}']]"
-        # On a fast machine the table can look 'settled' before the search results arrive, so give
-        # the exact row up to 20s to appear before falling back to paging (seen on the Linux server).
-        try:
-            self.wait_until(lambda d: wrapper.find_elements(By.XPATH, row_xpath), timeout=20)
-        except Exception:
-            pass
-        for _ in range(20):
-            rows = wrapper.find_elements(By.XPATH, row_xpath)
-            if rows:
-                select_btn = rows[0].find_element(
-                    By.XPATH,
-                    ".//a[contains(normalize-space(.),'Select')] | .//button[contains(normalize-space(.),'Select')]",
-                )
-                self.js_click(select_btn)
-                return
-            next_btn = wrapper.find_elements(By.CSS_SELECTOR, ".paginate_button.next")
-            if not next_btn or "disabled" in (next_btn[0].get_attribute("class") or ""):
-                break
-            target = next_btn[0].find_elements(By.TAG_NAME, "a") or [next_btn[0]]
-            self.js_click(target[0])
-            self._wait_table_settled(wrapper)
-
-        raise TimeoutException(f"Customer row for '{name}' never appeared in the search results")
+        """Exact-name customer selection that pages through the results (see pages/customer_picker.py)."""
+        pick_customer(self, name)
 
     def select_customer(self, name):
         self._select_customer_once(name)
