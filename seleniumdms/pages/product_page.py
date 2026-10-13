@@ -380,14 +380,51 @@ class ProductPage(BasePage):
         )
         return sorted(tiers, key=lambda t: t["min"])
 
+    def _wait_ajax_idle(self, timeout=15):
+        """Wait until the page has no jQuery AJAX call in flight (each qty change triggers a stock /
+        batch check on the server). Returns True if idle within the timeout."""
+        end = time.time() + timeout
+        while time.time() < end:
+            try:
+                if self.driver.execute_script("return window.jQuery ? jQuery.active : 0") == 0:
+                    return True
+            except Exception:
+                return True
+            time.sleep(0.25)
+        return False
+
+    def _alert_visible(self):
+        try:
+            return any(e.is_displayed() for e in self.driver.find_elements(*self.ANY_ALERT_TITLE))
+        except Exception:
+            return False
+
     def enter_quantity(self, row_index, qty):
+        """Type qty into the row's Sale Qty box, then wait for the page's stock/batch check to finish
+        and confirm the value stuck (typing the next row too early could lose this one). If an alert
+        is open (e.g. insufficient inventory) it is left for the test to read."""
         info = self.product_row(row_index)
-        inp = info["qty_input"]
-        self.js_click(inp)
-        inp.clear()
-        inp.send_keys(str(qty))
-        inp.send_keys(Keys.TAB)
-        return info["item_code"]
+        code = info["item_code"]
+        for attempt in range(2):
+            inp = self.product_row(row_index)["qty_input"] if attempt else info["qty_input"]
+            self.js_click(inp)
+            inp.clear()
+            inp.send_keys(str(qty))
+            inp.send_keys(Keys.TAB)
+            time.sleep(0.4)
+            self._wait_ajax_idle()
+            if self._alert_visible():
+                break
+            try:
+                value = (self.product_row(row_index)["qty_input"].get_attribute("value") or "").strip()
+            except Exception:
+                value = str(qty)
+            if value == str(qty) or (value and float(value) == float(qty)):
+                break
+        if not hasattr(self, "entered_items"):
+            self.entered_items = []
+        self.entered_items.append({"code": code, "name": info.get("display_name"), "qty": qty})
+        return code
 
     def get_available_stock(self, row_index):
         return self.product_row(row_index)["available_stock"]
@@ -442,8 +479,12 @@ class ProductPage(BasePage):
         return " | ".join(messages)
 
     def click_calc(self):
+        # Let any pending qty-change calls finish first, otherwise Calc can run on a half-updated cart.
+        self._wait_ajax_idle()
+        before = self.text_of(self.SUMMARY_FINAL_AMOUNT)
         self.click(self.CALC_BUTTON)
         seen_alerts = []
+        started = time.time()
 
         def _final_amount_ready(d):
             # An insufficient-inventory alert can block the Final Amount from updating until dismissed,
@@ -451,9 +492,18 @@ class ProductPage(BasePage):
             msg = self.dismiss_one_alert(timeout=0.3)
             if msg:
                 seen_alerts.append(msg)
-            return any(ch.isdigit() for ch in d.find_element(*self.SUMMARY_FINAL_AMOUNT).text)
+            text = d.find_element(*self.SUMMARY_FINAL_AMOUNT).text
+            if not any(ch.isdigit() for ch in text):
+                return False
+            # The previous value already contains digits, so only accept it once it has changed, or
+            # once the recalculation has clearly finished (no calls in flight for a couple of seconds).
+            if text != before:
+                return True
+            idle = d.execute_script("return window.jQuery ? jQuery.active : 0") == 0
+            return idle and time.time() - started > 2.5
 
         self.wait_until(_final_amount_ready, timeout=30, message="Final Amount never populated after clicking Calc")
+        self._wait_ajax_idle(timeout=10)
         trailing = self.dismiss_any_alert(timeout=8)
         if trailing:
             seen_alerts.append(trailing)
