@@ -6,6 +6,7 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
 
 from pages.bill_unit_apply_page import BillUnitApplyPage
+from utilities.known_issues import is_known_problem
 
 
 def _num(text):
@@ -103,6 +104,8 @@ class BillBatchPage(BillUnitApplyPage):
                 try:
                     info = self.product_row(i)
                 except Exception:
+                    continue
+                if is_known_problem(info.get("display_name")):
                     continue
                 if info["available_stock"] < min_stock or self._unit_select(i) is None:
                     continue

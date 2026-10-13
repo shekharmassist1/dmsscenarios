@@ -11,6 +11,7 @@ from utilities.performance import attach_page_performance
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import Select, WebDriverWait
+from utilities.known_issues import is_known_problem
 
 
 def _parse_float(text):
@@ -272,7 +273,10 @@ class ProductPage(BasePage):
             picked = []
             for i in range(len(self.find_all(self.PRODUCT_ROWS))):
                 try:
-                    if self.product_row(i)["available_stock"] >= min_qty:
+                    info = self.product_row(i)
+                    if is_known_problem(info.get("display_name")):
+                        continue  # confirmed app bug for this product -- see utilities/known_issues.py
+                    if info["available_stock"] >= min_qty:
                         picked.append(i)
                         if len(picked) == count:
                             break

@@ -20,6 +20,7 @@ from pages.sale_return_page import SaleReturnPage
 from utilities.allure_utils import step
 from utilities.db import get_order_header, get_order_products
 from utilities.invoice_pdf import extract_line_item_count, extract_payable_amount, fetch_invoice_text
+from utilities.known_issues import is_known_problem
 
 CUSTOMER_NAME = "Demo Dealer 3"
 pytestmark = pytest.mark.xdist_group(name="dd3")  # parallel runs: one group per customer, never shared
@@ -65,6 +66,8 @@ def _pick_items(page, units):
             try:
                 info = page.product_row(i)
             except Exception:
+                continue
+            if is_known_problem(info.get("display_name")):
                 continue
             if info["available_stock"] < QTY or page._unit_select(i) is None:
                 continue

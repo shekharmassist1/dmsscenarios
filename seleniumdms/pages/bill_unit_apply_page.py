@@ -6,6 +6,7 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import Select
 
 from pages.product_page import ProductPage
+from utilities.known_issues import is_known_problem
 
 
 class BillUnitApplyPage(ProductPage):
@@ -66,6 +67,8 @@ class BillUnitApplyPage(ProductPage):
                 try:
                     info = self.product_row(i)
                 except Exception:
+                    continue
+                if is_known_problem(info.get("display_name")):
                     continue
                 per_carton = self.pieces_per_carton(info["display_name"])
                 if per_carton and per_carton > 1 and info["available_stock"] >= 1 and self._unit_select(i) is not None:

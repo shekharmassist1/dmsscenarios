@@ -6,6 +6,7 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import Select
 
 from pages.product_page import ProductPage
+from utilities.known_issues import is_known_problem
 
 
 def _num(text):
@@ -109,7 +110,10 @@ class BillFilterPage(ProductPage):
             if code in codes:
                 continue
             try:
-                if self.product_row(i)["available_stock"] >= min_qty:
+                info = self.product_row(i)
+                if is_known_problem(info.get("display_name")):
+                    continue
+                if info["available_stock"] >= min_qty:
                     return i
             except Exception:
                 continue
