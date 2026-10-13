@@ -104,9 +104,80 @@ def _row_texts(wrapper, limit=3):
     return out
 
 
+BEAT_CONTAINERS = (By.CSS_SELECTOR, "span.select2-selection--single")
+
+
+def _beat_select(page):
+    """The <select> behind the first visible select2 dropdown on the customer screen (the Beat filter),
+    or None. The customer list only shows the selected beat's customers."""
+    for span in page.driver.find_elements(*BEAT_CONTAINERS):
+        try:
+            if not span.is_displayed():
+                continue
+            sel = span.find_element(By.XPATH, "./ancestor::span[contains(@class,'select2-container')]/preceding-sibling::select[1]")
+            return sel
+        except Exception:
+            continue
+    return None
+
+
+def _beat_options(sel):
+    return [((o.get_attribute("value") or ""), o.text.strip()) for o in sel.find_elements(By.TAG_NAME, "option")]
+
+
+def _set_beat(page, sel, value):
+    """Choose a beat (select2) and wait for the customer table to reload."""
+    try:
+        _, wrapper = _customer_table(page, timeout=20)
+        before = _info_text(wrapper)
+    except Exception:
+        wrapper, before = None, None
+    page.driver.execute_script(
+        "var s = arguments[0];"
+        "if (window.jQuery) { jQuery(s).val(arguments[1]).trigger('change'); }"
+        "else { s.value = arguments[1]; s.dispatchEvent(new Event('change', {bubbles: true})); }",
+        sel, value,
+    )
+    end = time.time() + 10
+    while wrapper is not None and time.time() < end and _info_text(wrapper) == before:
+        time.sleep(0.3)
+    time.sleep(1.5)
+
+
+def _ensure_all_beat(page):
+    """Select the 'All' beat if there is one. Returns the beat options for a beat-by-beat fallback."""
+    sel = _beat_select(page)
+    if sel is None:
+        return None, []
+    options = _beat_options(sel)
+    all_opt = next((v for v, t in options if re.match(r"^\s*(all|--\s*all|select all)", t, flags=re.I)), None)
+    current = sel.get_attribute("value") or ""
+    if all_opt is not None and current != all_opt:
+        _set_beat(page, sel, all_opt)
+    return sel, options
+
+
 def pick_customer(page, name, max_pages=20):
+    beat_sel, beat_options = _ensure_all_beat(page)
+    try:
+        return _pick_customer_in_current_beat(page, name, max_pages)
+    except TimeoutException as first_error:
+        # Not in the current beat: try each beat in turn (the customer list only shows one beat at a time).
+        for value, text in beat_options:
+            if not value:
+                continue
+            try:
+                sel = _beat_select(page) or beat_sel
+                _set_beat(page, sel, value)
+                return _pick_customer_in_current_beat(page, name, 2, quick=True)
+            except Exception:
+                continue
+        raise first_error
+
+
+def _pick_customer_in_current_beat(page, name, max_pages=20, quick=False):
     seen_pages = []
-    for term in (name, f'"{name}"'):
+    for term in ((name,) if quick else (name, f'"{name}"')):
         search, wrapper = _customer_table(page)
         try:
             lengths = wrapper.find_elements(By.CSS_SELECTOR, "select[name$='_length']") or \
@@ -124,7 +195,7 @@ def pick_customer(page, name, max_pages=20):
         page._wait_table_settled(wrapper)
 
         for page_no in range(1, max_pages + 1):
-            row = _wait_for_match(wrapper, name, timeout=15 if page_no == 1 else 8)
+            row = _wait_for_match(wrapper, name, timeout=(5 if quick else 15) if page_no == 1 else 8)
             if row is not None:
                 btn = row.find_element(
                     By.XPATH, ".//a[contains(normalize-space(.),'Select')] | .//button[contains(normalize-space(.),'Select')]"

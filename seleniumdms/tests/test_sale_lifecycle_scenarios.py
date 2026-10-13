@@ -367,7 +367,9 @@ def test_sale_then_partial_return_with_reference(logged_in_driver, soft_assert):
 
     with step(page, "Partial return: Select All, then remove one item (keep the others)"):
         soft_assert.check_true(page.select_all_reference_items(), "Select All should fill the Qty boxes")
-        removed = page.enter_saleable_qty(SALE_ITEMS - 1, "")
+        rows_shown = page.get_visible_product_row_count()
+        returned = max(rows_shown - 1, 1)
+        removed = page.enter_saleable_qty(rows_shown - 1, "")
         allure.attach(removed, name="C_item_not_returned", attachment_type=allure.attachment_type.TEXT)
 
     with step(page, "Calculate and View Selected Items"):

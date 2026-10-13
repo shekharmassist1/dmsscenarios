@@ -25,15 +25,22 @@ class BillPage:
         menu.click()
 
     def verify_beat(self):
+        """Open the Beat dropdown and check it has options. Then leave it on 'All' (if offered):
+        DMS remembers the last beat, and picking a single beat here used to leave the shared test
+        account showing only that beat's customers (e.g. only Demo Dealer 1) for every later run."""
         beat = self.wait.until(EC.element_to_be_clickable((By.XPATH,"//span[contains(@class,'select2-selection--single')]")))
         beat.click()
 
-        first_option = WebDriverWait(self.driver, 10).until(
+        WebDriverWait(self.driver, 10).until(
             EC.element_to_be_clickable(
                 (By.XPATH, "(//li[contains(@class,'select2-results__option')])[1]")
             )
         )
-        first_option.click()
+        options = [o for o in self.driver.find_elements(By.XPATH, "//li[contains(@class,'select2-results__option')]")
+                   if o.is_displayed()]
+        assert options, "Beat dropdown has no options"
+        choice = next((o for o in options if o.text.strip().lower().startswith("all")), options[0])
+        choice.click()
 
     def credit_info(self):
         credit_info = self.wait.until(EC.element_to_be_clickable((By.ID,"btnSetClientLimit")))
