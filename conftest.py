@@ -46,6 +46,16 @@ def _chrome_options():
     options.add_argument("--window-size=1920,1080")
     options.add_argument("--no-sandbox")
     options.add_argument("--disable-dev-shm-usage")
+    # A fresh Chrome profile with a visible window (Linux server, Xvfb) opens first-run screens
+    # (welcome tab, search-engine choice, default-browser prompt) and Selenium can attach to the
+    # wrong tab ("Runtime.evaluate wasn't found"). Skip them all.
+    options.add_argument("--no-first-run")
+    options.add_argument("--no-default-browser-check")
+    options.add_argument("--disable-search-engine-choice-screen")
+    options.add_argument("--disable-extensions")
+    options.add_argument("--disable-gpu")
+    options.add_argument("--password-store=basic")
+    options.add_experimental_option("excludeSwitches", ["enable-automation"])
     # Return from driver.get() once the HTML is ready instead of waiting for every slow
     # widget/tracker on the DMS pages (tests already wait for the elements they need).
     options.page_load_strategy = "eager"
@@ -65,7 +75,12 @@ def driver():
     driver.set_page_load_timeout(120)
 
     try:
-        driver.maximize_window()
+        # maximize_window() is unreliable on a virtual screen without a window manager (Xvfb);
+        # the --window-size option already gives 1920x1080, so fall back to setting it directly.
+        try:
+            driver.maximize_window()
+        except Exception:
+            driver.set_window_size(1920, 1080)
         driver.implicitly_wait(IMPLICIT_WAIT)
         driver.get(BASE_URL)
 
