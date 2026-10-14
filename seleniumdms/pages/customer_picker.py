@@ -151,45 +151,82 @@ def _total_entries(wrapper):
     return int(m.group(1).replace(",", "")) if m else None
 
 
+def _beat_text(page):
+    for span in page.driver.find_elements(*BEAT_CONTAINERS):
+        try:
+            if span.is_displayed():
+                return span.text.strip()
+        except Exception:
+            continue
+    return None
+
+
 def _force_all_beat(page, min_customers=2, timeout=20):
-    """Select the 'ALL' beat -- ALWAYS re-triggered, even if the dropdown already shows ALL, because the
-    beat is stored per login on the server and the three parallel workers share one login, so the
-    table can be loaded for a different beat than the dropdown shows. Then wait until the table holds
-    more than one customer. Never selects a single beat (that would change it for the other workers)."""
-    sel = _beat_select(page)
-    if sel is None:
-        return False
-    options = _beat_options(sel)
-    all_opt = next((v for v, t in options if re.match(r"^\s*(all|--\s*all|select all)", t, flags=re.I)), None)
-    if all_opt is None:
-        return False
-    _set_beat(page, sel, all_opt)
+    """Choose 'ALL' in the Beat dropdown the way a person does (click the select2 box, click 'ALL'),
+    because setting the value from code is not picked up by the page. Always done, even when it
+    already shows ALL: the beat is stored per login on the server and the parallel workers share one
+    login. Then wait until the customer table holds more than one customer. Never picks a single beat.
+    Returns a short diagnostic string for error messages."""
+    before = _beat_text(page)
+    clicked = None
+    try:
+        box = next((b for b in page.driver.find_elements(*BEAT_CONTAINERS) if b.is_displayed()), None)
+        if box is not None:
+            page.js_click(box) if hasattr(page, "js_click") else box.click()
+            end = time.time() + 5
+            option = None
+            while time.time() < end and option is None:
+                for li in page.driver.find_elements(By.CSS_SELECTOR, "li.select2-results__option"):
+                    try:
+                        if li.is_displayed() and re.match(r"^\s*all\s*$", li.text, flags=re.I):
+                            option = li
+                            break
+                    except Exception:
+                        continue
+                if option is None:
+                    time.sleep(0.3)
+            if option is not None:
+                try:
+                    option.click()
+                except Exception:
+                    page.js_click(option)
+                clicked = "ALL"
+            else:
+                from selenium.webdriver.common.keys import Keys
+                page.driver.switch_to.active_element.send_keys(Keys.ESCAPE)
+    except Exception as exc:
+        clicked = f"error: {exc.__class__.__name__}"
+
+    total = None
     end = time.time() + timeout
     while time.time() < end:
         try:
             _, wrapper = _customer_table(page, timeout=5)
             total = _total_entries(wrapper)
             if total is not None and total >= min_customers:
-                return True
+                break
         except Exception:
             pass
         time.sleep(0.5)
-    return False
+    return f"beat before={before!r}, clicked={clicked!r}, after={_beat_text(page)!r}, customers loaded={total}"
 
 
 def pick_customer(page, name, max_pages=20):
-    _force_all_beat(page)
+    diag = _force_all_beat(page)
     try:
         return _pick_customer_in_current_beat(page, name, max_pages)
     except TimeoutException:
-        # The beat may have been switched by another worker in between: force ALL again, reload, retry once.
+        # The beat may have been switched by another worker in between: reload, force ALL again, retry once.
         try:
             page.driver.refresh()
             time.sleep(2)
         except Exception:
             pass
-        _force_all_beat(page)
-        return _pick_customer_in_current_beat(page, name, max_pages)
+        diag2 = _force_all_beat(page)
+        try:
+            return _pick_customer_in_current_beat(page, name, max_pages)
+        except TimeoutException as exc:
+            raise TimeoutException(f"{exc.msg} | Beat 1st try: {diag} | 2nd try: {diag2}")
 
 
 def _pick_customer_in_current_beat(page, name, max_pages=20, quick=False):

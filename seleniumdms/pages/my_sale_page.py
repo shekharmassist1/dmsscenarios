@@ -231,7 +231,7 @@ class MySalePage(BasePage):
         new_handle = next(h for h in self.driver.window_handles if h != main_handle)
         self.driver.switch_to.window(new_handle)
         self.wait_until(
-            lambda d: "OrderId" in d.current_url, timeout=15, message="Invoice tab never loaded a report URL"
+            lambda d: "orderid" in d.current_url.lower(), timeout=15, message="Invoice tab never loaded a report URL"
         )
         url = self.driver.current_url
         time.sleep(1.5)

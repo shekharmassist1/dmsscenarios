@@ -809,10 +809,25 @@ class ProductPage(BasePage):
 
     def generate_invoice_and_get_url(self):
         main_handle = self.driver.current_window_handle
-        self.wait_until(
-            EC.visibility_of_element_located(self.POST_SALE_PRINT_PREVIEW_TITLE),
-            message="Post-sale 'Print Preview!' dialog never appeared",
+
+        def _preview_or_other_dialog(d):
+            if any(e.is_displayed() for e in d.find_elements(*self.POST_SALE_PRINT_PREVIEW_TITLE)):
+                return "preview"
+            # Any other jconfirm dialog instead (e.g. an error such as -1023 'price discrepancy'):
+            for box in d.find_elements(By.CSS_SELECTOR, "div.jconfirm-box"):
+                try:
+                    if box.is_displayed() and "print preview" not in box.text.lower():
+                        return box.text.strip()
+                except Exception:
+                    continue
+            return False
+
+        result = self.wait_until(
+            _preview_or_other_dialog, timeout=30,
+            message="Post-sale 'Print Preview!' dialog never appeared (and no other dialog either)",
         )
+        if result != "preview":
+            raise AssertionError(f"After Yes! Proceed the app showed this dialog instead of 'Print Preview!': {result!r}")
         self.click(self.POST_SALE_PRINT_BUTTON)
         self.wait_until(
             lambda d: len(d.window_handles) > 1,
@@ -821,7 +836,7 @@ class ProductPage(BasePage):
         )
         new_handle = next(h for h in self.driver.window_handles if h != main_handle)
         self.driver.switch_to.window(new_handle)
-        self.wait_until(lambda d: "OrderId" in d.current_url, timeout=15, message="Invoice tab never loaded a report URL")
+        self.wait_until(lambda d: "orderid" in d.current_url.lower(), timeout=15, message="Invoice tab never loaded a report URL")
         url = self.driver.current_url
         time.sleep(1.5)
         screenshot = self.driver.get_screenshot_as_png()
