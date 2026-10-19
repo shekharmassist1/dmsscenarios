@@ -422,18 +422,23 @@ class SaleReturnPage(BasePage):
         for _ in range(5):
             if not self.dismiss_inventory_alert(timeout=2):
                 break
-        self.wait_until(
-            lambda d: any(ch.isdigit() for ch in d.find_element(*self.SUMMARY_FINAL_AMOUNT).text),
-            timeout=20,
-            message="Final Amount never populated after clicking Calc",
-        )
+        state = {"last": None, "since": time.time()}
+
+        def _stable(d):
+            text = self.summary_value(self.SUMMARY_FINAL_AMOUNT, "Final Amount")
+            if text != state["last"]:
+                state["last"], state["since"] = text, time.time()
+            return any(ch.isdigit() for ch in text) and time.time() - state["since"] >= 1.5
+
+        self.wait_until(_stable, timeout=30,
+                        message="Final Amount never showed a stable number after clicking Calculate")
         return self
 
     def get_summary(self):
         return {
-            "total_item": self.text_of(self.SUMMARY_TOTAL_ITEM),
-            "amount": self.text_of(self.SUMMARY_AMOUNT),
-            "final_amount": self.text_of(self.SUMMARY_FINAL_AMOUNT),
+            "total_item": self.summary_value(self.SUMMARY_TOTAL_ITEM, "Total Item"),
+            "amount": self.summary_value(self.SUMMARY_AMOUNT, "Amount"),
+            "final_amount": self.summary_value(self.SUMMARY_FINAL_AMOUNT, "Final Amount"),
         }
 
     def click_print(self):

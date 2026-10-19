@@ -1,3 +1,4 @@
+import re
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
@@ -83,6 +84,33 @@ class BasePage:
     def wait_until(self, condition, timeout=None, message=""):
         w = self.wait if timeout is None else WebDriverWait(self.driver, timeout)
         return w.until(condition, message)
+
+    _NUMBER_RE = re.compile(r"-?[\d,]*\.?\d+")
+
+    def summary_value(self, locator, label):
+        """Text of a header summary box (Total Item, Final Amount, ...). Tries the old locator first;
+        if it is missing or empty (the DMS UI update changed the header), finds the box by its
+        on-screen label (exact, case-insensitive) and returns the number shown in that box."""
+        try:
+            for el in self.driver.find_elements(*locator):
+                if el.is_displayed() and el.text.strip():
+                    return el.text.strip()
+        except Exception:
+            pass
+        lower = "translate(normalize-space(.),'ABCDEFGHIJKLMNOPQRSTUVWXYZ','abcdefghijklmnopqrstuvwxyz')"
+        xpath = f"//*[not(*) and {lower}='{label.lower()}']"
+        for lab in self.driver.find_elements("xpath", xpath):
+            try:
+                if not lab.is_displayed():
+                    continue
+                box_text = lab.find_element("xpath", "./..").text
+                rest = box_text.replace(lab.text, " ")
+                m = self._NUMBER_RE.search(rest)
+                if m:
+                    return m.group(0)
+            except Exception:
+                continue
+        return ""
 
     def text_of(self, locator):
         return self.find(locator).text.strip()

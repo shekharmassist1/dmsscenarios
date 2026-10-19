@@ -384,7 +384,7 @@ class ProductPage(BasePage):
         )
         return sorted(tiers, key=lambda t: t["min"])
 
-    def _wait_ajax_idle(self, timeout=15):
+    def _wait_ajax_idle(self, timeout=4):
         """Wait until the page has no jQuery AJAX call in flight (each qty change triggers a stock /
         batch check on the server). Returns True if idle within the timeout."""
         end = time.time() + timeout
@@ -498,31 +498,33 @@ class ProductPage(BasePage):
             self.js_click(btn)
 
     def click_calc(self):
-        # Let any pending qty-change calls finish first, otherwise Calc can run on a half-updated cart.
+        """Click Calculate and wait until Final Amount shows a number that has stopped changing.
+        With Auto Calculate (on by default since the DMS update) the totals may already be final
+        before the click, and the page keeps a background request open, so 'no requests in
+        flight' is no longer a usable signal -- a stable Final Amount is."""
         self._wait_ajax_idle()
-        before = self.text_of(self.SUMMARY_FINAL_AMOUNT)
+        before = self.summary_value(self.SUMMARY_FINAL_AMOUNT, "Final Amount")
         self._click_calculate()
         seen_alerts = []
-        started = time.time()
+        state = {"last": None, "since": time.time(), "start": time.time()}
 
         def _final_amount_ready(d):
-            # An insufficient-inventory alert can block the Final Amount from updating until dismissed,
-            # so dismiss opportunistically while polling instead of waiting for it to clear on its own.
+            # An insufficient-inventory alert can block the Final Amount from updating until dismissed.
             msg = self.dismiss_one_alert(timeout=0.3)
             if msg:
                 seen_alerts.append(msg)
-            text = d.find_element(*self.SUMMARY_FINAL_AMOUNT).text
+            text = self.summary_value(self.SUMMARY_FINAL_AMOUNT, "Final Amount")
+            if text != state["last"]:
+                state["last"], state["since"] = text, time.time()
             if not any(ch.isdigit() for ch in text):
                 return False
-            # The previous value already contains digits, so only accept it once it has changed, or
-            # once the recalculation has clearly finished (no calls in flight for a couple of seconds).
-            if text != before:
-                return True
-            idle = d.execute_script("return window.jQuery ? jQuery.active : 0") == 0
-            return idle and time.time() - started > 2.5
+            stable_for = time.time() - state["since"]
+            waited = time.time() - state["start"]
+            return (text != before and stable_for >= 1.5) or (stable_for >= 3 and waited >= 3)
 
-        self.wait_until(_final_amount_ready, timeout=30, message="Final Amount never populated after clicking Calc")
-        self._wait_ajax_idle(timeout=10)
+        self.wait_until(_final_amount_ready, timeout=30,
+                        message="Final Amount never showed a stable number after clicking Calculate")
+        self._wait_ajax_idle(timeout=3)
         trailing = self.dismiss_any_alert(timeout=8)
         if trailing:
             seen_alerts.append(trailing)
@@ -531,14 +533,14 @@ class ProductPage(BasePage):
 
     def get_summary(self):
         return {
-            "total_item": self.text_of(self.SUMMARY_TOTAL_ITEM),
-            "amount": self.text_of(self.SUMMARY_AMOUNT),
-            "qty_pcs": self.text_of(self.SUMMARY_QTY_PCS),
-            "all_qty_pcs": self.text_of(self.SUMMARY_ALL_QTY_PCS),
-            "total_gst": self.text_of(self.SUMMARY_TOTAL_GST),
-            "final_amount": self.text_of(self.SUMMARY_FINAL_AMOUNT),
-            "free_item": self.text_of(self.SUMMARY_FREE_ITEM),
-            "total_scheme": self.text_of(self.SUMMARY_TOTAL_SCHEME),
+            "total_item": self.summary_value(self.SUMMARY_TOTAL_ITEM, "Total Item"),
+            "amount": self.summary_value(self.SUMMARY_AMOUNT, "Amount"),
+            "qty_pcs": self.summary_value(self.SUMMARY_QTY_PCS, "Qty (pcs)"),
+            "all_qty_pcs": self.summary_value(self.SUMMARY_ALL_QTY_PCS, "All Qty (pcs)"),
+            "total_gst": self.summary_value(self.SUMMARY_TOTAL_GST, "Total GST"),
+            "final_amount": self.summary_value(self.SUMMARY_FINAL_AMOUNT, "Final Amount"),
+            "free_item": self.summary_value(self.SUMMARY_FREE_ITEM, "Free Item"),
+            "total_scheme": self.summary_value(self.SUMMARY_TOTAL_SCHEME, "Total Scheme"),
         }
 
     def search_product(self, text, timeout=15):

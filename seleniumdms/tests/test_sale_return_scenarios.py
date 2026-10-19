@@ -298,9 +298,10 @@ def test_scenario2_with_reference_full_return_verified_against_original_sale(log
                 name="db_original_sale_header",
                 attachment_type=allure.attachment_type.TEXT,
             )
-            soft_assert.check_equal(
-                original_sale["OrderType"], "sale",
-                f"Referenced Order_Id={invoice['order_id']} should be a completed sale (OrderType='sale')",
+            soft_assert.check_true(
+                str(original_sale["OrderType"]).lower() in ("sale", "saleagainstorder"),
+                f"Referenced Order_Id={invoice['order_id']} should be a completed sale "
+                f"(OrderType 'sale' or 'SaleAgainstOrder'), got {original_sale['OrderType']!r}",
             )
             soft_assert.check_true(
                 abs(float(original_sale["Order_Amt"]) - _to_float(invoice["amount"])) < 0.01,

@@ -151,7 +151,7 @@ def _total_entries(wrapper):
     return int(m.group(1).replace(",", "")) if m else None
 
 
-ALL_RE = re.compile(r"^\s*(all|--\s*all\s*--|select all)\s*$", re.I)
+ALL_RE = re.compile(r"^\s*(all|--\s*all\s*--)\s*$", re.I)
 
 
 def _beat_candidates(page):
@@ -164,10 +164,12 @@ def _beat_candidates(page):
             if name.strip().endswith("_length") or "_length" in name:
                 continue
             options = sel.find_elements(By.TAG_NAME, "option")
-            if any(ALL_RE.match(o.get_attribute("textContent") or "") for o in options):
+            if len(options) >= 2 and any(ALL_RE.match(o.get_attribute("textContent") or "") for o in options):
                 out.append(sel)
         except StaleElementReferenceException:
             continue
+    # Prefer a dropdown that is clearly the Beat filter.
+    out.sort(key=lambda e: 0 if "beat" in ((e.get_attribute("id") or "") + (e.get_attribute("name") or "")).lower() else 1)
     return out
 
 
@@ -232,7 +234,10 @@ def _force_all_beat(page, min_customers=2, timeout=20):
         except Exception:
             pass
         time.sleep(0.5)
-    return f"beat before={before}, {how}, after={_select_info(page, sel)}, customers loaded={total}"
+    diag = f"beat before={before}, {how}, after={_select_info(page, sel)}, customers loaded={total}"
+    if total is None or total < min_customers:
+        diag += f"; dropdowns on page: {_all_selects_info(page)}"
+    return diag
 
 
 def pick_customer(page, name, max_pages=20):

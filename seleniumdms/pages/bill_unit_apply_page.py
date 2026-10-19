@@ -43,21 +43,33 @@ class BillUnitApplyPage(ProductPage):
         return Select(sel).first_selected_option.text.strip() if sel else None
 
     def set_unit(self, index, kind):
-        """kind = 'carton' or 'piece'. Selects the matching option and fires the change event."""
-        sel = self._unit_select(index)
-        if sel is None:
-            raise AssertionError(f"Row {index} has no Carton/Piece unit dropdown")
+        """kind = 'carton' or 'piece'. Since the DMS UI update the row redraws as soon as the unit
+        changes (Auto Calculate), so: select the option (Selenium fires the change itself), wait,
+        re-find the row's dropdown and verify the unit stuck; retry up to 3 times."""
         prefixes = ("cart",) if kind == "carton" else ("pi", "pc")
-        for opt in sel.find_elements(By.TAG_NAME, "option"):
-            if opt.text.strip().lower().startswith(prefixes):
-                Select(sel).select_by_visible_text(opt.text)
-                self.driver.execute_script(
-                    "arguments[0].dispatchEvent(new Event('change', {bubbles: true}));", sel
-                )
-                time.sleep(1)
-                self.dismiss_any_alert(timeout=1)
-                return opt.text.strip()
-        raise AssertionError(f"Row {index}: no '{kind}' option in {self.unit_options(index)}")
+        shown = None
+        for attempt in range(3):
+            sel = self._unit_select(index)
+            if sel is None:
+                raise AssertionError(f"Row {index} has no Carton/Piece unit dropdown")
+            try:
+                target = next((o.text for o in sel.find_elements(By.TAG_NAME, "option")
+                               if o.text.strip().lower().startswith(prefixes)), None)
+                if target is None:
+                    raise AssertionError(f"Row {index}: no '{kind}' option in {self.unit_options(index)}")
+                Select(sel).select_by_visible_text(target)
+            except StaleElementReferenceException:
+                pass
+            time.sleep(1.5)
+            self.dismiss_any_alert(timeout=1)
+            try:
+                sel = self._unit_select(index)
+                shown = Select(sel).first_selected_option.text.strip() if sel is not None else None
+            except StaleElementReferenceException:
+                shown = None
+            if shown and shown.lower().startswith(prefixes):
+                return shown
+        raise AssertionError(f"Row {index}: unit would not stay on {kind!r} (shows {shown!r} after 3 tries)")
 
     def find_row_with_multi_piece_carton(self, max_rows=60):
         """First row (index, info) whose pack has more than 1 piece per carton, that has a
