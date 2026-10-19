@@ -194,28 +194,68 @@ def _all_selects_info(page):
     return infos
 
 
-def _force_all_beat(page, min_customers=2, timeout=20):
-    """Choose 'ALL' in the Beat filter and make the customer list reload. Always done (and the change
-    event always fired, even if it already shows ALL): the beat is stored per login on the server and
-    the parallel workers share one login, so the list can be loaded for a beat the dropdown does not
-    show. Never picks a single beat. Returns a diagnostic string for error messages."""
-    end = time.time() + 10
-    candidates = []
-    while time.time() < end and not candidates:
-        candidates = _beat_candidates(page)
-        if not candidates:
-            time.sleep(0.5)
-    if not candidates:
-        return f"no dropdown with an 'ALL' option found; dropdowns on page: {_all_selects_info(page)}"
+_BEAT_LABEL_XPATH = ("//*[not(self::option) and not(self::script) and "
+                     "translate(normalize-space(text()),' :','')='Beat']")
 
-    sel = candidates[0]
+
+def _beat_select_by_label(page):
+    """The <select> right after the 'Beat :' label (it may be hidden behind a select2 box)."""
+    for lab in page.driver.find_elements(By.XPATH, _BEAT_LABEL_XPATH):
+        try:
+            if not lab.is_displayed():
+                continue
+            sels = lab.find_elements(By.XPATH, "following::select[1]")
+            if sels:
+                return sels[0]
+        except StaleElementReferenceException:
+            continue
+    return None
+
+
+def _option_texts(sel):
+    try:
+        return [(o.get_attribute("textContent") or "").strip() for o in sel.find_elements(By.TAG_NAME, "option")]
+    except StaleElementReferenceException:
+        return []
+
+
+def _wait_beat_loaded(page, timeout=30):
+    """Wait until the Beat dropdown exists and its options have loaded (not just 'Loading...').
+    Returns (select or None, option texts)."""
+    end = time.time() + timeout
+    sel, texts = None, []
+    while time.time() < end:
+        sel = _beat_select_by_label(page)
+        if sel is None:
+            cands = _beat_candidates(page)
+            sel = cands[0] if cands else None
+        if sel is not None:
+            texts = _option_texts(sel)
+            if texts and not all(t.lower().startswith("loading") for t in texts):
+                return sel, texts
+        time.sleep(0.5)
+    return sel, texts
+
+
+def _force_all_beat(page, min_customers=2, timeout=20):
+    """Choose 'ALL' in the Beat filter (found by its 'Beat :' label) once its options have loaded,
+    and make the customer list reload. The beat options arrive by AJAX after the page opens; if the
+    test looks too early the list is loaded for one beat only (seen: just 'Demo Dealer 1').
+    Never picks a single beat. Returns a diagnostic string for error messages."""
+    sel, texts = _wait_beat_loaded(page)
+    if sel is None:
+        return f"Beat dropdown not found; dropdowns on page: {_all_selects_info(page)}"
+    all_opt = next((t for t in texts if ALL_RE.match(t)), None)
+    if all_opt is None:
+        return f"Beat options have no 'ALL' (options: {texts[:8]}); dropdowns on page: {_all_selects_info(page)}"
+
     before = _select_info(page, sel)
     try:
         all_value = next(o.get_attribute("value") for o in sel.find_elements(By.TAG_NAME, "option")
                          if ALL_RE.match(o.get_attribute("textContent") or ""))
         page.driver.execute_script(
             "var s=arguments[0], v=arguments[1];"
-            "if (window.jQuery) { jQuery(s).val(v).trigger('change'); jQuery(s).trigger({type:'select2:select'}); }"
+            "if (window.jQuery) { jQuery(s).val(v).trigger('change'); }"
             "else { s.value=v; s.dispatchEvent(new Event('change', {bubbles:true})); }",
             sel, all_value,
         )
@@ -236,7 +276,7 @@ def _force_all_beat(page, min_customers=2, timeout=20):
         time.sleep(0.5)
     diag = f"beat before={before}, {how}, after={_select_info(page, sel)}, customers loaded={total}"
     if total is None or total < min_customers:
-        diag += f"; dropdowns on page: {_all_selects_info(page)}"
+        diag += f"; beat options={texts[:8]}; dropdowns on page: {_all_selects_info(page)}"
     return diag
 
 
