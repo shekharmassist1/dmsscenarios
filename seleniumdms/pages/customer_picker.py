@@ -151,51 +151,75 @@ def _total_entries(wrapper):
     return int(m.group(1).replace(",", "")) if m else None
 
 
-def _beat_text(page):
-    for span in page.driver.find_elements(*BEAT_CONTAINERS):
+ALL_RE = re.compile(r"^\s*(all|--\s*all\s*--|select all)\s*$", re.I)
+
+
+def _beat_candidates(page):
+    """Every <select> on the page that offers an 'ALL' option (the Beat filter), excluding the
+    DataTables 'Show N entries' boxes. Works for plain selects and select2-enhanced ones."""
+    out = []
+    for sel in page.driver.find_elements(By.TAG_NAME, "select"):
         try:
-            if span.is_displayed():
-                return span.text.strip()
+            name = (sel.get_attribute("name") or "") + " " + (sel.get_attribute("id") or "")
+            if name.strip().endswith("_length") or "_length" in name:
+                continue
+            options = sel.find_elements(By.TAG_NAME, "option")
+            if any(ALL_RE.match(o.get_attribute("textContent") or "") for o in options):
+                out.append(sel)
+        except StaleElementReferenceException:
+            continue
+    return out
+
+
+def _select_info(page, sel):
+    try:
+        return page.driver.execute_script(
+            "var s=arguments[0]; var o=s.options[s.selectedIndex];"
+            "return (s.id||s.name||'?') + '=' + (o ? o.text.trim() : '') + ' (' + s.options.length + ' options'"
+            " + (s.classList.contains('select2-hidden-accessible') ? ', select2' : '') + ')';", sel)
+    except Exception:
+        return "?"
+
+
+def _all_selects_info(page):
+    infos = []
+    for sel in page.driver.find_elements(By.TAG_NAME, "select")[:12]:
+        try:
+            opts = [o.get_attribute("textContent").strip() for o in sel.find_elements(By.TAG_NAME, "option")][:6]
+            infos.append(f"{sel.get_attribute('id') or sel.get_attribute('name') or '?'}:{opts}")
         except Exception:
             continue
-    return None
+    return infos
 
 
 def _force_all_beat(page, min_customers=2, timeout=20):
-    """Choose 'ALL' in the Beat dropdown the way a person does (click the select2 box, click 'ALL'),
-    because setting the value from code is not picked up by the page. Always done, even when it
-    already shows ALL: the beat is stored per login on the server and the parallel workers share one
-    login. Then wait until the customer table holds more than one customer. Never picks a single beat.
-    Returns a short diagnostic string for error messages."""
-    before = _beat_text(page)
-    clicked = None
+    """Choose 'ALL' in the Beat filter and make the customer list reload. Always done (and the change
+    event always fired, even if it already shows ALL): the beat is stored per login on the server and
+    the parallel workers share one login, so the list can be loaded for a beat the dropdown does not
+    show. Never picks a single beat. Returns a diagnostic string for error messages."""
+    end = time.time() + 10
+    candidates = []
+    while time.time() < end and not candidates:
+        candidates = _beat_candidates(page)
+        if not candidates:
+            time.sleep(0.5)
+    if not candidates:
+        return f"no dropdown with an 'ALL' option found; dropdowns on page: {_all_selects_info(page)}"
+
+    sel = candidates[0]
+    before = _select_info(page, sel)
     try:
-        box = next((b for b in page.driver.find_elements(*BEAT_CONTAINERS) if b.is_displayed()), None)
-        if box is not None:
-            page.js_click(box) if hasattr(page, "js_click") else box.click()
-            end = time.time() + 5
-            option = None
-            while time.time() < end and option is None:
-                for li in page.driver.find_elements(By.CSS_SELECTOR, "li.select2-results__option"):
-                    try:
-                        if li.is_displayed() and re.match(r"^\s*all\s*$", li.text, flags=re.I):
-                            option = li
-                            break
-                    except Exception:
-                        continue
-                if option is None:
-                    time.sleep(0.3)
-            if option is not None:
-                try:
-                    option.click()
-                except Exception:
-                    page.js_click(option)
-                clicked = "ALL"
-            else:
-                from selenium.webdriver.common.keys import Keys
-                page.driver.switch_to.active_element.send_keys(Keys.ESCAPE)
+        all_value = next(o.get_attribute("value") for o in sel.find_elements(By.TAG_NAME, "option")
+                         if ALL_RE.match(o.get_attribute("textContent") or ""))
+        page.driver.execute_script(
+            "var s=arguments[0], v=arguments[1];"
+            "if (window.jQuery) { jQuery(s).val(v).trigger('change'); jQuery(s).trigger({type:'select2:select'}); }"
+            "else { s.value=v; s.dispatchEvent(new Event('change', {bubbles:true})); }",
+            sel, all_value,
+        )
+        how = "set ALL + change event"
     except Exception as exc:
-        clicked = f"error: {exc.__class__.__name__}"
+        how = f"error: {exc.__class__.__name__}"
 
     total = None
     end = time.time() + timeout
@@ -208,7 +232,7 @@ def _force_all_beat(page, min_customers=2, timeout=20):
         except Exception:
             pass
         time.sleep(0.5)
-    return f"beat before={before!r}, clicked={clicked!r}, after={_beat_text(page)!r}, customers loaded={total}"
+    return f"beat before={before}, {how}, after={_select_info(page, sel)}, customers loaded={total}"
 
 
 def pick_customer(page, name, max_pages=20):
