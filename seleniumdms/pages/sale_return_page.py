@@ -402,8 +402,23 @@ class SaleReturnPage(BasePage):
         self.js_click(cancel_btn)
         return self
 
+
+    def _click_calculate(self):
+        """Click Calculate (#lblCalculate). It now sits in a sticky top bar next to the 'Auto Calculate'
+        toggle, with its label shown as a hover tooltip -- a normal click can land on the tooltip/bar,
+        so scroll it into view, try a real click, and fall back to a script click if anything covers it."""
+        btn = self.wait_until(
+            lambda d: next((b for b in d.find_elements(*self.CALC_BUTTON) if b.is_displayed()), False),
+            timeout=20, message="Calculate button (#lblCalculate) not visible",
+        )
+        self.driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", btn)
+        try:
+            btn.click()
+        except Exception:
+            self.js_click(btn)
+
     def click_calc(self):
-        self.click(self.CALC_BUTTON)
+        self._click_calculate()
         for _ in range(5):
             if not self.dismiss_inventory_alert(timeout=2):
                 break
