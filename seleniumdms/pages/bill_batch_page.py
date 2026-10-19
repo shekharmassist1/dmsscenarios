@@ -48,10 +48,11 @@ class BillBatchPage(BillUnitApplyPage):
         rows = []
         for tr in box.find_elements(By.CSS_SELECTOR, "tbody tr"):
             try:
-                if not tr.is_displayed():
-                    continue
+                # No is_displayed() check and textContent instead of .text: the popup's content pane
+                # scrolls (max-height), and since the UI update a row scrolled out of that pane counts
+                # as hidden, which used to drop the second batch.
                 tds = tr.find_elements(By.TAG_NAME, "td")
-                texts = [td.text.strip() for td in tds]
+                texts = [(td.get_attribute("textContent") or "").strip() for td in tds]
                 if any(t.lower().startswith("total") for t in texts) or len(tds) < 3:
                     continue
                 batch = texts[cols["batch"]] if cols["batch"] is not None and cols["batch"] < len(texts) else None

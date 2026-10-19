@@ -280,22 +280,24 @@ def _force_all_beat(page, min_customers=2, timeout=20):
     return diag
 
 
-def pick_customer(page, name, max_pages=20):
-    diag = _force_all_beat(page)
-    try:
-        return _pick_customer_in_current_beat(page, name, max_pages)
-    except TimeoutException:
-        # The beat may have been switched by another worker in between: reload, force ALL again, retry once.
-        try:
-            page.driver.refresh()
-            time.sleep(2)
-        except Exception:
-            pass
-        diag2 = _force_all_beat(page)
+def pick_customer(page, name, max_pages=20, attempts=3):
+    """Force Beat=ALL and pick the customer. The Select Customer screen sometimes comes up with its
+    Beat dropdown still 'Loading...' and only one customer listed; when that happens, reload the page
+    and try again (up to `attempts` times, waiting a little longer each time)."""
+    diags = []
+    for attempt in range(1, attempts + 1):
+        if attempt > 1:
+            try:
+                page.driver.get(page.driver.current_url)
+                time.sleep(3 * attempt)
+            except Exception:
+                pass
+        diags.append(f"try {attempt}: {_force_all_beat(page)}")
         try:
             return _pick_customer_in_current_beat(page, name, max_pages)
         except TimeoutException as exc:
-            raise TimeoutException(f"{exc.msg} | Beat 1st try: {diag} | 2nd try: {diag2}")
+            last = exc
+    raise TimeoutException(f"{last.msg} | " + " | ".join(diags))
 
 
 def _pick_customer_in_current_beat(page, name, max_pages=20, quick=False):
