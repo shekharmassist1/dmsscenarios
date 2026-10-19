@@ -156,10 +156,24 @@ class BillBatchPage(BillUnitApplyPage):
             )
         time.sleep(0.3)
 
+    def _current_popup(self, timeout=10):
+        """The visible batch popup (re-found each time: the app redraws it while quantities are typed)."""
+        def _popup(d):
+            for b in d.find_elements(*self.JCONFIRM_BOXES):
+                try:
+                    if b.is_displayed() and b.text.strip():
+                        return b
+                except StaleElementReferenceException:
+                    continue
+            return False
+        return self.wait_until(_popup, timeout=timeout, message="Batch popup is no longer open")
+
     def split_across_batches(self, row_index, allocation, unit="piece"):
         """Open the row's hamburger, put allocation[batch] in each listed batch's qty box and click
         Apply. The column used follows the unit shown in the popup title (Quantity for Piece,
-        Carton Qty for Carton) -- the other column is read-only. Returns (popup unit, alert text)."""
+        Carton Qty for Carton) -- the other column is read-only. Each qty box is looked up fresh
+        (the popup redraws while typing), and Apply is clicked only once it becomes enabled (the app
+        keeps it disabled until valid quantities are entered). Returns (popup unit, alert text)."""
         box = self.open_hamburger(row_index)
         time.sleep(1)
         shown_unit = self.popup_unit(box)
@@ -167,10 +181,45 @@ class BillBatchPage(BillUnitApplyPage):
         rows = self.batch_rows(box, column)
         if not any(r["input"].is_enabled() and not r["input"].get_attribute("readonly") for r in rows):
             other = "piece" if column == "carton" else "carton"
-            rows = self.batch_rows(box, other) or rows
-        for r in rows:
-            self._set_value(r["input"], allocation.get(r["batch"], ""))
-        apply_btn = box.find_element(By.XPATH, ".//button[normalize-space(.)='Apply'] | .//*[@value='Apply']")
+            if self.batch_rows(box, other):
+                column = other
+
+        for batch, qty in allocation.items():
+            for attempt in range(3):
+                try:
+                    row = next((r for r in self.batch_rows(self._current_popup(), column) if r["batch"] == batch), None)
+                    if row is None:
+                        raise AssertionError(f"Batch {batch!r} not found in the popup ({column} column)")
+                    self._set_value(row["input"], qty)
+                    break
+                except StaleElementReferenceException:
+                    time.sleep(0.7)
+            else:
+                raise AssertionError(f"Could not enter {qty} for batch {batch!r}: the popup kept redrawing")
+
+        state = None
+        end = time.time() + 10
+        while time.time() < end:
+            try:
+                state = self.apply_button_state(self._current_popup())
+                if state["enabled"]:
+                    break
+            except StaleElementReferenceException:
+                pass
+            time.sleep(0.5)
+        if not state or not state["enabled"]:
+            details = state["details"] if state else "Apply button not found"
+            entered = {r["batch"]: r["qty"] for r in self.batch_rows(self._current_popup(), column)}
+            try:
+                self.close_popup_without_applying(self._current_popup())
+            except Exception:
+                pass
+            raise AssertionError(
+                f"Apply stayed DISABLED after entering {allocation} in the batch popup "
+                f"(popup unit {shown_unit!r}; quantities shown {entered}; {details})"
+            )
+
+        apply_btn = self._current_popup().find_element(By.XPATH, ".//button[normalize-space(.)='Apply'] | .//*[@value='Apply']")
         self.js_click(apply_btn)
         time.sleep(1.5)
         return shown_unit, self.dismiss_any_alert(timeout=2)

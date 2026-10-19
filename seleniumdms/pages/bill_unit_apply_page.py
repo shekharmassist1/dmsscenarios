@@ -104,29 +104,54 @@ class BillUnitApplyPage(ProductPage):
         return self.wait_until(_popup, timeout=timeout, message="Hamburger popup never opened")
 
     def apply_button_state(self, box):
-        """{'found', 'visible', 'enabled', 'details'} for the popup's Apply button. 'enabled' is False
-        if the button is missing/hidden, has the disabled attribute, a 'disabled' class,
-        aria-disabled=true, or pointer-events:none."""
+        """{'found', 'visible', 'enabled', 'details'} for the popup's Apply button.
+
+        The app disables Apply by styling its CONTAINER (div.jconfirm-buttons gets
+        'cursor: not-allowed; opacity: 0.5'), not the button itself -- so the button and every parent
+        up to the popup are checked. 'enabled' is False if any of them has the disabled attribute, a
+        'disabled' class, aria-disabled=true, pointer-events:none, cursor:not-allowed or opacity < 1,
+        or if the button is missing/hidden."""
         buttons = box.find_elements(By.XPATH, ".//button[normalize-space(.)='Apply'] | .//*[@value='Apply']")
         if not buttons:
             return {"found": False, "visible": False, "enabled": False, "details": "no Apply button in the popup"}
         btn = buttons[0]
         visible = btn.is_displayed()
-        disabled_attr = btn.get_attribute("disabled")
-        cls = btn.get_attribute("class") or ""
-        aria = (btn.get_attribute("aria-disabled") or "").lower()
-        pointer = self.driver.execute_script("return getComputedStyle(arguments[0]).pointerEvents;", btn)
-        opacity = self.driver.execute_script("return getComputedStyle(arguments[0]).opacity;", btn)
-        enabled = (
-            visible
-            and btn.is_enabled()
-            and disabled_attr is None
-            and "disabled" not in cls.lower()
-            and aria != "true"
-            and pointer != "none"
-        )
-        details = (f"visible={visible} is_enabled={btn.is_enabled()} disabled_attr={disabled_attr!r} "
-                   f"class={cls!r} aria-disabled={aria!r} pointer-events={pointer!r} opacity={opacity!r}")
+        chain = self.driver.execute_script(
+            """
+            var el = arguments[0], stop = arguments[1], out = [];
+            while (el && el.nodeType === 1) {
+                var cs = getComputedStyle(el);
+                out.push({
+                    tag: el.tagName.toLowerCase() + (el.className ? '.' + String(el.className).trim().split(/\\s+/).join('.') : ''),
+                    disabled: el.hasAttribute('disabled'),
+                    cls: String(el.className || ''),
+                    aria: (el.getAttribute('aria-disabled') || '').toLowerCase(),
+                    pointer: cs.pointerEvents, cursor: cs.cursor, opacity: parseFloat(cs.opacity)
+                });
+                if (el === stop) break;
+                el = el.parentElement;
+            }
+            return out;
+            """,
+            btn, box,
+        ) or []
+        reasons = []
+        for node in chain:
+            if node["disabled"]:
+                reasons.append(f"{node['tag']} has disabled attribute")
+            if "disabled" in node["cls"].lower().split():
+                reasons.append(f"{node['tag']} has class 'disabled'")
+            if node["aria"] == "true":
+                reasons.append(f"{node['tag']} aria-disabled=true")
+            if node["pointer"] == "none":
+                reasons.append(f"{node['tag']} pointer-events:none")
+            if node["cursor"] == "not-allowed":
+                reasons.append(f"{node['tag']} cursor:not-allowed")
+            if node["opacity"] is not None and node["opacity"] < 0.99:
+                reasons.append(f"{node['tag']} opacity {node['opacity']}")
+        enabled = visible and btn.is_enabled() and not reasons
+        details = (f"visible={visible} is_enabled={btn.is_enabled()} "
+                   + ("disabled because: " + "; ".join(reasons) if reasons else "no disabling style on the button or its containers"))
         return {"found": True, "visible": visible, "enabled": enabled, "details": details}
 
     def close_popup_without_applying(self, box):
