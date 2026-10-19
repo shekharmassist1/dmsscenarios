@@ -189,7 +189,12 @@ class BillBatchPage(BillUnitApplyPage):
                 try:
                     row = next((r for r in self.batch_rows(self._current_popup(), column) if r["batch"] == batch), None)
                     if row is None:
-                        raise AssertionError(f"Batch {batch!r} not found in the popup ({column} column)")
+                        found = [(r["batch"], r["qty"]) for r in self.batch_rows(self._current_popup(), column)]
+                        other = "carton" if column == "piece" else "piece"
+                        found_other = [(r["batch"], r["qty"]) for r in self.batch_rows(self._current_popup(), other)]
+                        raise AssertionError(
+                            f"Batch {batch!r} not found in the popup ({column} column); rows with a {column} box: "
+                            f"{found}; rows with a {other} box: {found_other}; popup unit {shown_unit!r}")
                     self._set_value(row["input"], qty)
                     break
                 except StaleElementReferenceException:
@@ -232,7 +237,7 @@ class BillBatchPage(BillUnitApplyPage):
         col = next((i for i, h in enumerate(headers) if "pcs" in h and "inv" in h), None)
         if col is None:
             return None
-        tds = self.find_all(self.PRODUCT_ROWS)[row_index].find_elements(By.TAG_NAME, "td")
+        tds = self.product_row_el(row_index).find_elements(By.TAG_NAME, "td")
         return _num(tds[col].text) if col < len(tds) else None
 
     def batch_summary(self, row_index):

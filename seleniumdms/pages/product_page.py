@@ -223,7 +223,7 @@ class ProductPage(BasePage):
         for _ in range(3):
             try:
                 rows = self.find_all(self.PRODUCT_ROWS)
-                row = rows[index]
+                row = self.product_row_el(index)
                 name_cell = row.find_element(By.CSS_SELECTOR, "td.Variant_Name")
                 item_code = name_cell.find_element(By.CSS_SELECTOR, "label.barcode").get_attribute("barcode").strip()
                 display_name = name_cell.find_element(By.CSS_SELECTOR, "span.Variant_Name").get_attribute(
@@ -314,7 +314,7 @@ class ProductPage(BasePage):
             for _ in range(3):
                 try:
                     rows = self.find_all(self.PRODUCT_ROWS)
-                    row = rows[row_index]
+                    row = self.product_row_el(row_index)
                     gift_icon = row.find_element(By.CSS_SELECTOR, "span.offer.available_scheme")
                     self.driver.execute_script("arguments[0].scrollIntoView({block:'center'});", gift_icon)
                     gift_icon.click()
@@ -522,8 +522,12 @@ class ProductPage(BasePage):
             waited = time.time() - state["start"]
             return (text != before and stable_for >= 1.5) or (stable_for >= 3 and waited >= 3)
 
-        self.wait_until(_final_amount_ready, timeout=30,
-                        message="Final Amount never showed a stable number after clicking Calculate")
+        try:
+            self.wait_until(_final_amount_ready, timeout=30, message="")
+        except TimeoutException:
+            raise TimeoutException(
+                f"Final Amount never showed a stable number after clicking Calculate "
+                f"(last read: {state['last']!r}; before click: {before!r})")
         self._wait_ajax_idle(timeout=3)
         trailing = self.dismiss_any_alert(timeout=8)
         if trailing:

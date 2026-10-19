@@ -314,7 +314,7 @@ class SaleReturnPage(BasePage):
 
     def product_row(self, index):
         rows = self.find_all(self.PRODUCT_ROWS)
-        row = rows[index]
+        row = self.product_row_el(index)
         display_name = row.find_element(By.CSS_SELECTOR, "span.Variant_Name").get_attribute(
             "product_name"
         ).strip()
@@ -331,7 +331,7 @@ class SaleReturnPage(BasePage):
         """A stable, unique id (variant_id, falling back to data-productid) for the row at this
         index -- unlike the display name, which can repeat across different rows/variants in this
         catalog (confirmed live), this is safe to use as a dict key when tracking distinct items."""
-        row = self.find_all(self.PRODUCT_ROWS)[index]
+        row = self.product_row_el(index)
         container = row.find_element(By.CSS_SELECTOR, "div.tbl_content_n")
         return container.get_attribute("variant_id") or container.get_attribute("data-productid")
 
@@ -430,8 +430,12 @@ class SaleReturnPage(BasePage):
                 state["last"], state["since"] = text, time.time()
             return any(ch.isdigit() for ch in text) and time.time() - state["since"] >= 1.5
 
-        self.wait_until(_stable, timeout=30,
-                        message="Final Amount never showed a stable number after clicking Calculate")
+        try:
+            self.wait_until(_stable, timeout=30, message="")
+        except TimeoutException:
+            raise TimeoutException(
+                f"Final Amount never showed a stable number after clicking Calculate "
+                f"(last read: {state['last']!r})")
         return self
 
     def get_summary(self):

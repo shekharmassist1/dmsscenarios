@@ -27,7 +27,7 @@ class BillUnitApplyPage(ProductPage):
 
     def _unit_select(self, index):
         """The row's unit dropdown: the <select> whose options include Carton and Piece."""
-        row = self.find_all(self.PRODUCT_ROWS)[index]
+        row = self.product_row_el(index)
         for sel in row.find_elements(By.TAG_NAME, "select"):
             texts = [o.text.strip().lower() for o in sel.find_elements(By.TAG_NAME, "option")]
             if any(t.startswith("cart") for t in texts) and any(t.startswith("pi") or t.startswith("pc") for t in texts):
@@ -101,7 +101,7 @@ class BillUnitApplyPage(ProductPage):
     def open_hamburger(self, index, timeout=30):
         """Click the row's hamburger and return the popup that opens (a visible jconfirm box)."""
         time.sleep(1)
-        row = self.find_all(self.PRODUCT_ROWS)[index]
+        row = self.product_row_el(index)
         self.js_click(row.find_element(*self.HAMBURGER))
 
         def _popup(d):
