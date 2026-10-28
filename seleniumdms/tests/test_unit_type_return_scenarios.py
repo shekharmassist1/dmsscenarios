@@ -199,8 +199,33 @@ def _click_select_all(page):
     return False
 
 
+_PAIRS_JS = """
+    // Every (quantity box, unit dropdown) pair in the row, in page order: a dropdown that offers
+    // Carton is paired with the nearest quantity box before it (Qty -> Piece, Saleable Item -> Carton ...).
+    var out = [], last = null;
+    arguments[0].querySelectorAll('input, select').forEach(function (el) {
+        if (el.tagName === 'INPUT') {
+            if (el.type === 'text' || el.type === 'number' || el.type === '') last = el;
+            return;
+        }
+        var opts = Array.from(el.options).map(function (o) { return o.text.trim().toLowerCase(); });
+        if (!opts.some(function (o) { return o.indexOf('cart') === 0; })) return;
+        var sel = el.options[el.selectedIndex];
+        out.push([last ? (last.value || '').trim() : '', sel ? sel.text.trim() : '']);
+        last = null;
+    });
+    return out;
+"""
+
+
+def _pack_size(name):
+    """Pieces per carton from the product name, e.g. 'SUPER VANILLA BIG CUP [1*24] 55ML' -> 24."""
+    m = re.search(r"\[\s*1\s*\*\s*(\d+)\s*\]", name or "")
+    return int(m.group(1)) if m else None
+
+
 def _units_in(container_rows):
-    """{normalized product name: (unit kind, unit text, qty)} read from table rows."""
+    """{normalized product name: [(qty, unit kind, unit text), ...]} -- every quantity/unit pair in the row."""
     found = {}
     for tr in container_rows:
         try:
@@ -209,21 +234,8 @@ def _units_in(container_rows):
             text = tr.text
             name_el = tr.find_elements(By.CSS_SELECTOR, "span.Variant_Name")
             name = (name_el[0].get_attribute("product_name") or name_el[0].text) if name_el else text.split("\n")[0]
-            unit_text = None
-            for sel in tr.find_elements(By.TAG_NAME, "select"):
-                opts = [o.text.strip().lower() for o in sel.find_elements(By.TAG_NAME, "option")]
-                if any(o.startswith("cart") for o in opts):
-                    unit_text = Select(sel).first_selected_option.text.strip()
-                    break
-            if unit_text is None:
-                m = re.search(r"\b(cartons?|pieces?|pcs|piec\w*)\b", text, flags=re.IGNORECASE)
-                unit_text = m.group(1) if m else None
-            qty = None
-            for inp in tr.find_elements(By.CSS_SELECTOR, "input.C1, input.qty, input.SaleQty"):
-                if (inp.get_attribute("value") or "").strip():
-                    qty = inp.get_attribute("value").strip()
-                    break
-            found[_norm(name)] = (_unit_kind(unit_text), unit_text, qty)
+            pairs = tr.parent.execute_script(_PAIRS_JS, tr) or []
+            found[_norm(name)] = [(q, _unit_kind(u), u) for q, u in pairs if (q or "").strip()]
         except StaleElementReferenceException:
             continue
     return found
@@ -253,26 +265,36 @@ def _check_units_after_select_all(driver, soft_assert, sale, tag):
         allure.attach(f"Select All popup: {popup_units}\n\nReturn grid: {grid_units}",
                       name=f"{tag}_units_after_select_all", attachment_type=allure.attachment_type.TEXT)
 
-    with step(page, "Each item's unit type matches the sale"):
+    with step(page, "Each item's quantity after Select All equals what was sold (compared in pieces)"):
+        # The return row shows the same quantity in more than one column/unit (e.g. Qty '24 Piece' and
+        # Saleable Item '1 Carton' for 1 carton of a [1*24] item), so compare in pieces, like the header.
         for item in sale["items"]:
             key = _norm(item["name"])
-            seen = popup_units.get(key) or grid_units.get(key)
-            if seen is None:  # names can be truncated -- fall back to a prefix match
+            pairs = popup_units.get(key) or grid_units.get(key)
+            if pairs is None:  # names can be truncated -- fall back to a prefix match
                 base = _norm(item["name"].split("[")[0])
-                seen = next((v for k, v in {**grid_units, **popup_units}.items() if k.startswith(base)), None)
-            if seen is None:
+                pairs = next((v for k, v in {**grid_units, **popup_units}.items() if k.startswith(base)), None)
+            if not pairs:
                 soft_assert.check(False, f"{item['name']!r} was not found in the return after Select All")
                 continue
-            kind, text, qty = seen
+            pack = _pack_size(item["name"])
+            sold_pcs = QTY * (pack if (item["unit"] == "carton" and pack) else 1)
+
+            def pcs(q, kind):
+                n = _num(q)
+                return None if n is None else n * (pack if (kind == "carton" and pack) else 1)
+
+            shown = ", ".join(f"{q} {u}" for q, _, u in pairs)
             soft_assert.check_true(
-                kind == item["unit"],
-                f"ISSUE: {item['name']!r} was sold as '{item['unit_label']}' but after Select All the return "
-                f"shows unit '{text}'",
+                any(pcs(q, k) == sold_pcs for q, k, _ in pairs),
+                f"ISSUE: {item['name']!r} sold {QTY} {item['unit_label']} (= {sold_pcs} pcs) but after Select All "
+                f"the return shows {shown} -- none of these equals {sold_pcs} pcs",
             )
-            if qty is not None:
+            if pack and pack > 1:  # for 1-per-carton items Piece and Carton are the same quantity
                 soft_assert.check_true(
-                    _num(qty) == QTY,
-                    f"{item['name']!r}: return qty after Select All is {qty!r}, sold qty was {QTY} {item['unit_label']}",
+                    any(k == item["unit"] and _num(q) == QTY for q, k, _ in pairs),
+                    f"ISSUE: {item['name']!r} was sold as {QTY} {item['unit_label']} but no column of the return "
+                    f"shows {QTY} {item['unit_label']} (shows {shown})",
                 )
 
 
