@@ -9,8 +9,9 @@ import pytest
 from pages.bill_batch_page import BillBatchPage
 from pages.my_sale_page import MySalePage
 from utilities.allure_utils import step
+from config import CUSTOMER_3
 
-CUSTOMER_NAME = "Demo Dealer 3"
+CUSTOMER_NAME = CUSTOMER_3
 pytestmark = pytest.mark.xdist_group(name="dd3")  # parallel runs: one group per customer, never shared
 
 QTY_PER_BATCH = 1

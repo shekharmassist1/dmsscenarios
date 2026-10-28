@@ -4,6 +4,11 @@ pipeline {
     environment {
         // Site under test: change to 'https://stage.massistcrm.com' to run against stage
         DMS_BASE_URL = 'https://admin.massistcrm.com'
+        // Test customers (each parallel group uses its own). admin: Demo Dealer 2/3/4
+        DMS_CUSTOMER_2 = 'Demo Dealer 2'
+        DMS_CUSTOMER_3 = 'Demo Dealer 3'
+        DMS_CUSTOMER_4 = 'Demo Dealer 4'
+        DMS_COMPANY_NAME = 'Demo Distributor 1'
         PYTHON    = 'C:\\Users\\Asus\\AppData\\Local\\Programs\\Python\\Python312\\python.exe'
         DB_SERVER = '172.31.62.165'
         DB_NAME   = 'Ma_Live'

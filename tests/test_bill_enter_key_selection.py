@@ -8,8 +8,9 @@ from pages.bill_enter_key_page import BillEnterKeyPage
 from pages.login_page import LoginPage
 from utilities.helpers import take_screenshot
 from utilities.menu_utils import verify_menu_or_skip
+from config.config import CUSTOMER_4
 
-CUSTOMER_NAME = "Demo Dealer 4"
+CUSTOMER_NAME = CUSTOMER_4
 TARGET_PAGES = (6, 7)   # the issue was seen on the 6th/7th page of the product grid
 QTY = 1
 

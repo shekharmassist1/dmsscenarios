@@ -3,6 +3,7 @@ from selenium.webdriver.support.ui import WebDriverWait, Select
 from selenium.webdriver.support import expected_conditions as EC
 from config.config import EXPLICIT_WAIT
 import time
+from config.config import CUSTOMER_4
 
 class SaleReturnPage:
     def __init__(self, driver):
@@ -17,7 +18,7 @@ class SaleReturnPage:
 
     def search_customer(self, customer_name):
         search_input = self.wait.until(EC.element_to_be_clickable((By.XPATH, "//input[@type='search']")))
-        search_input.send_keys("Demo 4")
+        search_input.send_keys(CUSTOMER_4)
 
     def select_customer(self, customer_name):
         select_btn = self.wait.until(EC.visibility_of_element_located((

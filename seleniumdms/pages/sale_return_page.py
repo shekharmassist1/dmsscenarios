@@ -9,7 +9,7 @@ from selenium.webdriver.support.ui import Select
 
 from pages.base_page import BasePage
 from pages.customer_picker import pick_customer
-from config import BASE_URL
+from config import BASE_URL, CUSTOMER_4
 
 
 class SaleReturnPage(BasePage):
@@ -81,7 +81,7 @@ class SaleReturnPage(BasePage):
 
     # Fallback customer to try if the primary one has no products assigned (the app shows a
     # blocking "Product not exists!" alert in that case rather than proceeding).
-    FALLBACK_CUSTOMER = "Demo Dealer 4"
+    FALLBACK_CUSTOMER = CUSTOMER_4
 
     @staticmethod
     def _wait_table_settled(wrapper, timeout=10):

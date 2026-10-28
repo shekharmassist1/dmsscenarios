@@ -6,8 +6,9 @@ import pytest
 
 from pages.bill_batch_page import BillBatchPage
 from utilities.allure_utils import step
+from config import CUSTOMER_3
 
-CUSTOMER_NAME = "Demo Dealer 3"
+CUSTOMER_NAME = CUSTOMER_3
 pytestmark = pytest.mark.xdist_group(name="dd3")  # parallel runs: one group per customer, never shared
 
 MAX_PRODUCTS = 20      # in-stock products to check per run (each needs its popup opened); raise to check more

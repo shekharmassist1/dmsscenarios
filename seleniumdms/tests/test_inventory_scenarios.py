@@ -16,8 +16,9 @@ from utilities.invoice_pdf import (
     extract_items_and_pricing_table,
 )
 from utilities.db import get_latest_order_for_client, get_order_products
+from config import CUSTOMER_4, COMPANY_NAME
 
-CUSTOMER_NAME = "Demo Dealer 4"
+CUSTOMER_NAME = CUSTOMER_4
 pytestmark = pytest.mark.xdist_group(name="dd4")  # parallel runs: one group per customer, never shared
 
 
@@ -814,7 +815,7 @@ def test_scenario10_five_fixed_qty_items_verify_my_sale(logged_in_driver, soft_a
             )
             allure.attach(str(latest_sale), name="My Sales - latest row", attachment_type=allure.attachment_type.TEXT)
 
-            soft_assert.check_true(latest_sale is not None, "A sale row for 'Demo Dealer 4' should exist on My Sales")
+            soft_assert.check_true(latest_sale is not None, f"A sale row for {CUSTOMER_NAME!r} should exist on My Sales")
             if latest_sale is not None:
                 soft_assert.check_equal(latest_sale["party_name"], CUSTOMER_NAME, "My Sales: Party Name")
                 soft_assert.check_equal(
@@ -920,7 +921,7 @@ def test_scenario11_three_items_edit_and_verify_invoice(logged_in_driver, soft_a
                 attachment_type=allure.attachment_type.PNG,
             )
             allure.attach(str(latest_sale), name="My Sales - latest row", attachment_type=allure.attachment_type.TEXT)
-            soft_assert.check_true(latest_sale is not None, "A NEW sale row for 'Demo Dealer 4' should exist on My Sales")
+            soft_assert.check_true(latest_sale is not None, f"A NEW sale row for {CUSTOMER_NAME!r} should exist on My Sales")
             if latest_sale is not None:
                 sale_invoice = latest_sale["invoice_id"]
                 soft_assert.check_equal(
@@ -1293,7 +1294,7 @@ def test_scenario13_print_with_no_items_then_two_items(logged_in_driver, soft_as
             )
 
 
-EXPECTED_COMPANY_NAME = "Demo Distributor 1"
+EXPECTED_COMPANY_NAME = COMPANY_NAME
 
 
 @allure.epic("Bill / New Invoice")
@@ -1452,7 +1453,7 @@ def test_scenario15_edit_order_add_more_items_then_verify(logged_in_driver, soft
             my_sale_page.open()
             latest_sale = my_sale_page.get_latest_sale_for_client(CUSTOMER_NAME, exclude_invoice_ids={baseline_invoice})
             allure.attach(str(latest_sale), name="my_sales_row_before_edit", attachment_type=allure.attachment_type.TEXT)
-            soft_assert.check_true(latest_sale is not None, "A sale row for 'Demo Dealer 4' should exist on My Sales")
+            soft_assert.check_true(latest_sale is not None, f"A sale row for {CUSTOMER_NAME!r} should exist on My Sales")
             if latest_sale is not None:
                 soft_assert.check_equal(
                     latest_sale["no_of_items"], str(len(entered)), "My Sales: No. Of Items before edit"
@@ -1697,7 +1698,7 @@ def test_scenario16_single_scheme_product_edit_verify_scheme_persists(logged_in_
             my_sale_page.open()
             latest_sale = my_sale_page.get_latest_sale_for_client(CUSTOMER_NAME, exclude_invoice_ids={baseline_invoice})
             allure.attach(str(latest_sale), name="my_sales_latest_row", attachment_type=allure.attachment_type.TEXT)
-            soft_assert.check_true(latest_sale is not None, "A sale row for 'Demo Dealer 4' should exist on My Sales")
+            soft_assert.check_true(latest_sale is not None, f"A sale row for {CUSTOMER_NAME!r} should exist on My Sales")
         except Exception as exc:
             soft_assert.check(False, f"My Sales verification step failed: {exc}")
             return

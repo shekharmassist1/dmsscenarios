@@ -11,6 +11,7 @@ from utilities.excel_reader import get_bill_data
 
 import pytest
 from utilities.menu_utils import verify_menu_or_skip
+from config.config import CUSTOMER_4
 
 class BillPage:
 
@@ -182,7 +183,7 @@ class BillPage:
 
     def search_customer(self):
         search_input = self.wait.until(EC.element_to_be_clickable((By.XPATH, "//input[@type='search']")))
-        search_input.send_keys("Demo 4")
+        search_input.send_keys(CUSTOMER_4)
 
     def select_customer(self, customer_name):
 
@@ -196,7 +197,7 @@ class BillPage:
             )
 
             search_box.clear()
-            search_box.send_keys("Demo 4")
+            search_box.send_keys(CUSTOMER_4)
 
             time.sleep(2)
 

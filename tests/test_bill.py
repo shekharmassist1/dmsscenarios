@@ -16,6 +16,7 @@ from config.config import USERNAME, PASSWORD
 from utilities.menu_utils import verify_menu_or_skip
 from utilities.soft_assert import SoftAssert
 from config.config import SITE_URL
+from config.config import CUSTOMER_4
 
 @allure.epic("DMS Application")
 @allure.feature("Bill Management")
@@ -98,7 +99,7 @@ def test_create_bill(driver):
 
     with allure.step("Select Customer"):
         try:
-         selected_customer = bill.select_customer("Demo 4")
+         selected_customer = bill.select_customer(CUSTOMER_4)
          take_screenshot(driver, "Customer Selected")
         except Exception as e:
          soft.record_exception("Select Customer", e)

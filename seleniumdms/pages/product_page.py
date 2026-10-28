@@ -12,7 +12,7 @@ from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import Select, WebDriverWait
 from utilities.known_issues import is_known_problem
-from config import BASE_URL
+from config import BASE_URL, CUSTOMER_4
 
 
 def _parse_float(text):
@@ -144,7 +144,7 @@ class ProductPage(BasePage):
 
     # Fallback customer to try if the primary one has no products assigned (the app shows a
     # blocking "Product not exists!" alert in that case rather than loading the grid).
-    FALLBACK_CUSTOMER = "Demo Dealer 4"
+    FALLBACK_CUSTOMER = CUSTOMER_4
 
     def _customer_table(self):
         """Return (search_input, table_wrapper) for the visible customer table only -- the page also

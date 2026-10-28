@@ -20,8 +20,9 @@ from pages.sale_return_page import SaleReturnPage
 from utilities.allure_utils import step
 from utilities.db import get_latest_return_for_client, get_order_header, get_order_products, get_return_products
 from utilities.invoice_pdf import extract_line_item_count, extract_payable_amount, fetch_invoice_text
+from config import CUSTOMER_3
 
-CUSTOMER_NAME = "Demo Dealer 3"
+CUSTOMER_NAME = CUSTOMER_3
 pytestmark = pytest.mark.xdist_group(name="dd3")  # parallel runs: one group per customer, never shared
 
 SALE_ITEMS = 3

@@ -7,6 +7,7 @@ import pytest
 from pages.product_page import ProductPage
 from pages.sale_return_page import SaleReturnPage
 from utilities.allure_utils import step
+from config import CUSTOMER_2
 from utilities.db import (
     get_latest_order_for_client,
     get_latest_return_for_client,
@@ -15,7 +16,7 @@ from utilities.db import (
     get_return_products,
 )
 
-CUSTOMER_NAME = "Demo Dealer 2"
+CUSTOMER_NAME = CUSTOMER_2
 pytestmark = pytest.mark.xdist_group(name="dd2")  # parallel runs: one group per customer, never shared
 
 

@@ -16,5 +16,7 @@ REPORT_URL = (
 
 DB_SERVER = os.environ.get("DB_SERVER", "172.31.62.165")
 DB_NAME = os.environ.get("DB_NAME", "MA_Live")
-DB_USER = "view"
-DB_PASSWORD = "G7#vQ9!xL2@rT5$zC"
+DB_USER = os.environ.get("DB_USER", "view")
+DB_PASSWORD = os.environ.get("DB_PASSWORD", "G7#vQ9!xL2@rT5$zC")
+# Customer for the massist1 Bill tests (admin: Demo Dealer 4; set DMS_CUSTOMER_4 on stage).
+CUSTOMER_4 = os.environ.get("DMS_CUSTOMER_4", "Demo Dealer 4")

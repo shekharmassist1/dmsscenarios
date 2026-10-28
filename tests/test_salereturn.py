@@ -6,6 +6,7 @@ from pages.salereturn_page import SaleReturnPage
 from utilities.helpers import take_screenshot
 from config.config import USERNAME, PASSWORD
 from utilities.menu_utils import verify_menu_or_skip
+from config.config import CUSTOMER_4
 @allure.epic("DMS Application")
 @allure.feature("Sale Return")
 @allure.story("Process Sale Return Without Reference")
@@ -39,12 +40,12 @@ def test_sale_return(driver):
         take_screenshot(driver, "salereturn_02_Menu")
 
     with allure.step("Step 2.1: Enter customer"):
-        salereturn.search_customer("Demo 4")
+        salereturn.search_customer(CUSTOMER_4)
         time.sleep(5)
         take_screenshot(driver, "searchcustomer_2.1_Customer")
 
     with allure.step("Step 3: Select Customer - Demo Dealer 4"):
-        salereturn.select_customer("Demo Dealer 4")
+        salereturn.select_customer(CUSTOMER_4)
         time.sleep(5)
         take_screenshot(driver, "salereturn_03_Customer")
 

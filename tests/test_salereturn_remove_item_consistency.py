@@ -9,8 +9,9 @@ from pages.login_page import LoginPage
 from pages.sale_return_cart_page import SaleReturnCartPage, to_number
 from utilities.helpers import take_screenshot
 from utilities.menu_utils import verify_menu_or_skip
+from config.config import CUSTOMER_4
 
-CUSTOMER_NAME = "Demo Dealer 4"
+CUSTOMER_NAME = CUSTOMER_4
 QTY = 1
 AMOUNT_TOLERANCE = 1.0   # rupees; allows for rounding between the header and the popup
 

@@ -6,8 +6,9 @@ import pytest
 from pages.product_page import ProductPage
 from pages.draft_page import DraftPage
 from utilities.allure_utils import step
+from config import CUSTOMER_3
 
-CUSTOMER_NAME = "Demo Dealer 3"
+CUSTOMER_NAME = CUSTOMER_3
 pytestmark = pytest.mark.xdist_group(name="dd3")  # parallel runs: one group per customer, never shared
 
 QUANTITIES = {0: 2, 1: 3}
