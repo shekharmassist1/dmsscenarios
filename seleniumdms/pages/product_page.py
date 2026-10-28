@@ -521,7 +521,21 @@ class ProductPage(BasePage):
                 return False
             stable_for = time.time() - state["since"]
             waited = time.time() - state["start"]
-            return (text != before and stable_for >= 1.5) or (stable_for >= 3 and waited >= 3)
+            amount_ok = (text != before and stable_for >= 1.5) or (stable_for >= 3 and waited >= 3)
+            if not amount_ok:
+                return False
+            # The header can still show the previous totals (seen on the Edit Sale page after Add More):
+            # also wait until Total Item has caught up with the rows that have a quantity. If it never
+            # does (the app really drops an item), accept after 8 s stable so the test can report it.
+            try:
+                filled = d.execute_script(
+                    "return Array.from(document.querySelectorAll(arguments[0]))"
+                    ".filter(e => parseFloat((e.value || '').replace(/,/g, '')) > 0).length;",
+                    "#productlist tbody tr input.SaleQty") or 0
+                total_item = int(float(self.summary_value(self.SUMMARY_TOTAL_ITEM, "Total Item") or 0))
+            except Exception:
+                return True
+            return total_item >= filled or stable_for >= 8
 
         try:
             self.wait_until(_final_amount_ready, timeout=30, message="")
