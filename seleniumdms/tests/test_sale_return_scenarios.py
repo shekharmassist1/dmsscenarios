@@ -668,10 +668,16 @@ def test_scenario6_two_items_hamburger_checked_repeated_print(logged_in_driver, 
                     f"Print attempt {attempt}: Print Preview note should mention not saved, got {note!r}",
                 )
                 page.close_print_preview()
+            elif attempt > 1 and "-1014" in (error_text or ""):
+                # Confirmed with the team (28/10): Print works once per page; a second/third click is
+                # expected to answer with -1014. Not a defect -- record it and stop clicking.
+                results.append({"attempt": attempt, "success": success, "error": error_text, "expected": True})
+                break
             else:
                 soft_assert.check(
                     False,
-                    f"Print attempt {attempt} failed to open Print Preview -- got an error dialog instead: {error_text!r}",
+                    f"Print attempt {attempt} failed to open Print Preview -- got an error dialog instead: {error_text!r}"
+                    + (" (the FIRST Print must open the preview)" if attempt == 1 else ""),
                 )
             results.append({"attempt": attempt, "success": success, "error": error_text})
             if attempt < 3:

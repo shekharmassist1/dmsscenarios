@@ -1328,6 +1328,11 @@ def test_scenario14_repeated_print_company_header_consistency(logged_in_driver, 
         with allure.step(f"Click Print (check {i + 1}/{num_checks}) and verify the company header"):
             try:
                 opened, error_text = page.click_print_or_detect_error()
+                if not opened and i > 0 and "-1014" in (error_text or ""):
+                    # Expected (confirmed 28/10): Print works once per page; later clicks give -1014.
+                    allure.attach(f"Check {i + 1}: -1014 on a repeated Print (expected behaviour): {error_text!r}",
+                                  name=f"Print check {i + 1} - expected -1014", attachment_type=allure.attachment_type.TEXT)
+                    break
                 if not opened:
                     allure.attach(
                         page.driver.get_screenshot_as_png(),
