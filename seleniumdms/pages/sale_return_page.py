@@ -310,8 +310,20 @@ class SaleReturnPage(BasePage):
     def get_page_header_text(self):
         return self.text_of(self.PAGE_HEADER)
 
-    def get_visible_product_row_count(self):
-        return len(self.find_all(self.PRODUCT_ROWS))
+    def get_visible_product_row_count(self, expected=None, timeout=20):
+        """Number of product rows, once the grid has finished loading: the With Reference grid fills
+        in progressively, and counting at once gave 3 rows for a 4-item invoice (which also made Select
+        All fill only 3). Waits until the count reaches `expected` (if given) and has been stable for 2 s."""
+        end = time.time() + timeout
+        last, since = None, time.time()
+        while time.time() < end:
+            n = len(self.driver.find_elements(*self.PRODUCT_ROWS))
+            if n != last:
+                last, since = n, time.time()
+            if n and (expected is None or n >= expected) and time.time() - since >= 2:
+                return n
+            time.sleep(0.5)
+        return last or 0
 
     def product_row(self, index):
         rows = self.find_all(self.PRODUCT_ROWS)

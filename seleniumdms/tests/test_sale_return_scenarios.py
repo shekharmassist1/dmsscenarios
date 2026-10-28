@@ -325,7 +325,7 @@ def test_scenario2_with_reference_full_return_verified_against_original_sale(log
         soft_assert.check_true(
             CUSTOMER_NAME in header, f"Sale Return page header should mention '{CUSTOMER_NAME}', got {header!r}"
         )
-        row_count = page.get_visible_product_row_count()
+        row_count = page.get_visible_product_row_count(expected=int(invoice["noofitem"]))
         soft_assert.check_equal(
             row_count, int(invoice["noofitem"]),
             "Product grid should be scoped to exactly the referenced invoice's items, pre-filled "
@@ -707,7 +707,7 @@ def test_scenario7_with_reference_over_three_items_verify_item_count_consistency
         )
 
     with step(page, "On the product page: verify the grid row count matches the invoice's item count"):
-        row_count = page.get_visible_product_row_count()
+        row_count = page.get_visible_product_row_count(expected=int(invoice["noofitem"]))
         item_counts["product_page_row_count"] = row_count
         soft_assert.check_equal(
             row_count, item_counts["with_reference_invoice_list"],
