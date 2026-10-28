@@ -6,6 +6,7 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import Select, WebDriverWait
+from config.config import SITE_URL
 
 
 def _parse_number(text):
@@ -17,7 +18,7 @@ def _parse_number(text):
 class BillEnterKeyPage:
     """Bill/New Invoice page, used to check selecting items with the ENTER key on later grid pages."""
 
-    URL = "https://admin.massistcrm.com/DMSPages/SaleProduct.html"
+    URL = SITE_URL + "/DMSPages/SaleProduct.html"
 
     CUSTOMER_SEARCH_INPUT = (By.XPATH, "//input[@type='search']")
     PRODUCT_ROWS = (By.CSS_SELECTOR, "#productlist tbody tr")

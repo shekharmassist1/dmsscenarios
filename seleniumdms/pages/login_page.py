@@ -1,9 +1,10 @@
 from selenium.webdriver.common.by import By
 from pages.base_page import BasePage
+from config import BASE_URL
 
 
 class LoginPage(BasePage):
-    URL = "https://admin.massistcrm.com/Login.aspx"
+    URL = BASE_URL + "/Login.aspx"
 
     USERNAME_INPUT = (By.ID, "txtuser")
     PASSWORD_INPUT = (By.ID, "txtpassword")

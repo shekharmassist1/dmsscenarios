@@ -9,6 +9,7 @@ from selenium.webdriver.support.ui import Select
 
 from pages.base_page import BasePage
 from pages.customer_picker import pick_customer
+from config import BASE_URL
 
 
 class SaleReturnPage(BasePage):
@@ -16,7 +17,7 @@ class SaleReturnPage(BasePage):
     Sale/Bill module in pages/product_page.py. New Sale Return scenarios should be added as new
     test functions in tests/test_sale_return_scenarios.py, reusing the methods here."""
 
-    URL = "https://admin.massistcrm.com/DMSPages/ProductReceived.html"
+    URL = BASE_URL + "/DMSPages/ProductReceived.html"
 
     CUSTOMER_SEARCH_INPUT = (By.XPATH, "//input[@type='search']")
     PAGE_HEADER = (By.TAG_NAME, "h1")

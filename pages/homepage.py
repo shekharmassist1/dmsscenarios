@@ -7,6 +7,7 @@ import time
 from selenium.webdriver.support.ui import Select
 
 from utilities.db_utils import DatabaseUtils
+from config.config import SITE_URL
 
 
 class HomePage:
@@ -89,7 +90,7 @@ class HomePage:
 
                 # Return to dashboard
                 self.driver.get(
-                    "https://admin.massistcrm.com/DMSPages/Dashboard.html"
+                    SITE_URL + "/DMSPages/Dashboard.html"
                 )
 
                 self.wait.until(

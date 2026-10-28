@@ -2,6 +2,7 @@ import os
 import allure
 from datetime import datetime
 import time
+from config.config import SITE_URL
 
 def take_screenshot(driver, step_name, folder="screenshots"):
     os.makedirs(folder, exist_ok=True)
@@ -20,7 +21,7 @@ def take_screenshot(driver, step_name, folder="screenshots"):
     return file_name
 def navigate_dashboard(driver):
     driver.get(
-        "https://admin.massistcrm.com/DMSPages/Dashboard.html"
+        SITE_URL + "/DMSPages/Dashboard.html"
     )
     time.sleep(3)
 

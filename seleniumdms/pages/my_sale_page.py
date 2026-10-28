@@ -6,6 +6,7 @@ from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import Select
 from pages.base_page import BasePage
 from utilities.performance import attach_page_performance
+from config import BASE_URL
 
 
 class MySalePage(BasePage):
@@ -22,7 +23,7 @@ class MySalePage(BasePage):
       * Edit/Print always used the first row on the page; they now act on the exact matched row.
     """
 
-    URL = "https://admin.massistcrm.com/DMSPages/Reports/MyPreviousSale.html"
+    URL = BASE_URL + "/DMSPages/Reports/MyPreviousSale.html"
 
     SEARCH_INPUT = (By.CSS_SELECTOR, "#tbl_order_grid_filter input[type='search']")
     ROWS = (By.CSS_SELECTOR, "#tbl_order_grid tbody tr")

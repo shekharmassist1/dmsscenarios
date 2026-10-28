@@ -15,6 +15,7 @@ from utilities.helpers import take_screenshot
 from config.config import USERNAME, PASSWORD
 from utilities.menu_utils import verify_menu_or_skip
 from utilities.soft_assert import SoftAssert
+from config.config import SITE_URL
 
 @allure.epic("DMS Application")
 @allure.feature("Bill Management")
@@ -31,7 +32,7 @@ from utilities.soft_assert import SoftAssert
     - Verify invoice is generated
 """)
 @allure.tag("smoke", "bill", "critical")
-@allure.link("https://admin.massistcrm.com", name="DMS Application")
+@allure.link(SITE_URL, name="DMS Application")
 
 def test_create_bill(driver):
 

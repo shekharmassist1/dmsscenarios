@@ -2,10 +2,11 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.support import expected_conditions as EC
 from pages.base_page import BasePage
 from utilities.performance import attach_page_performance
+from config import BASE_URL
 
 
 class DraftPage(BasePage):
-    URL = "https://admin.massistcrm.com/DMSPages/NewDmsdrafts.html"
+    URL = BASE_URL + "/DMSPages/NewDmsdrafts.html"
 
     SEARCH_INPUT = (By.ID, "productSearch")
     ROWS = (By.CSS_SELECTOR, "#tbl_order_grid tbody tr")

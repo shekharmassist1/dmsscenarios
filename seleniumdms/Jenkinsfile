@@ -2,6 +2,8 @@ pipeline {
     agent any
 
     environment {
+        // Site under test: change to 'https://stage.massistcrm.com' to run against stage
+        DMS_BASE_URL = 'https://admin.massistcrm.com'
         PYTHON    = 'C:\\Users\\Asus\\AppData\\Local\\Programs\\Python\\Python312\\python.exe'
         DB_SERVER = '172.31.62.165'
         DB_NAME   = 'Ma_Live'

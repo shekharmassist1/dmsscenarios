@@ -6,6 +6,7 @@ from pages.login_page import LoginPage
 from pages.homepage import HomePage
 from utilities.helpers import take_screenshot, navigate_dashboard
 from config.config import USERNAME, PASSWORD
+from config.config import SITE_URL
 
 
 @allure.epic("DMS Application")
@@ -14,7 +15,7 @@ from config.config import USERNAME, PASSWORD
 @allure.severity(allure.severity_level.CRITICAL)
 @allure.title("Homepage Testing")
 @allure.tag("smoke", "homepage")
-@allure.link("https://admin.massistcrm.com", name="DMS Application")
+@allure.link(SITE_URL, name="DMS Application")
 def test_homepage(driver):
 
     login = LoginPage(driver)
@@ -35,7 +36,7 @@ def test_homepage(driver):
         )
         take_screenshot(driver, "Click_All_Menus")
         driver.get(
-            "https://admin.massistcrm.com/DMSPages/Dashboard.html"
+            SITE_URL + "/DMSPages/Dashboard.html"
         )
 
         time.sleep(3)

@@ -6,6 +6,7 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import Select, WebDriverWait
+from config.config import SITE_URL
 
 
 def to_number(text):
@@ -18,7 +19,7 @@ class SaleReturnCartPage:
     """Sale Return (Without Reference): select items, remove items, Save, and read back the
     Calc header and 'View All Selected Items' so they can be compared."""
 
-    URL = "https://admin.massistcrm.com/DMSPages/ProductReceived.html"
+    URL = SITE_URL + "/DMSPages/ProductReceived.html"
 
     CUSTOMER_SEARCH_INPUT = (By.XPATH, "//input[@type='search']")
     BILL_FOR_SELECT = (By.ID, "ddlBillFor")

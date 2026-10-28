@@ -8,6 +8,7 @@ from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import Select
 
 from selenium.webdriver.support.ui import WebDriverWait
+from config.config import SITE_URL
 
 
 class PurchaseReturnBatchPage:
@@ -17,7 +18,7 @@ class PurchaseReturnBatchPage:
     box (input.C1), a Damage Item qty box (input.C2) and a hamburger icon (span.ShowBatchWiseVariant)
     that opens a per-batch modal with an Apply button."""
 
-    URL = "https://admin.massistcrm.com/DMSPages/ReturnProduct.html"
+    URL = SITE_URL + "/DMSPages/ReturnProduct.html"
 
     ALERT_TITLE = (
         By.XPATH,

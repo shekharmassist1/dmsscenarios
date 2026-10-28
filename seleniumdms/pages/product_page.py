@@ -12,6 +12,7 @@ from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import Select, WebDriverWait
 from utilities.known_issues import is_known_problem
+from config import BASE_URL
 
 
 def _parse_float(text):
@@ -23,7 +24,7 @@ def _parse_float(text):
 
 
 class ProductPage(BasePage):
-    URL = "https://admin.massistcrm.com/DMSPages/SaleProduct.html"
+    URL = BASE_URL + "/DMSPages/SaleProduct.html"
     last_calc_alert = None
 
     CUSTOMER_SEARCH_INPUT = (By.XPATH, "//input[@type='search']")

@@ -280,10 +280,18 @@ def _force_all_beat(page, min_customers=2, timeout=20):
     return diag
 
 
+_CONSECUTIVE_FAILURES = 0   # per worker process: full pick_customer failures in a row
+
+
 def pick_customer(page, name, max_pages=20, attempts=3):
     """Force Beat=ALL and pick the customer. The Select Customer screen sometimes comes up with its
     Beat dropdown still 'Loading...' and only one customer listed; when that happens, reload the page
     and try again (up to `attempts` times, waiting a little longer each time)."""
+    global _CONSECUTIVE_FAILURES
+    if _CONSECUTIVE_FAILURES >= 2:
+        # The customer screen has been broken for the last two tests in this worker (seen: a whole
+        # morning run where the Beat list never loaded) -- fail fast instead of 3 slow page loads.
+        attempts = 1
     diags = []
     for attempt in range(1, attempts + 1):
         if attempt > 1:
@@ -294,9 +302,12 @@ def pick_customer(page, name, max_pages=20, attempts=3):
                 pass
         diags.append(f"try {attempt}: {_force_all_beat(page)}")
         try:
-            return _pick_customer_in_current_beat(page, name, max_pages)
+            result = _pick_customer_in_current_beat(page, name, max_pages)
+            _CONSECUTIVE_FAILURES = 0
+            return result
         except TimeoutException as exc:
             last = exc
+    _CONSECUTIVE_FAILURES += 1
     raise TimeoutException(f"{last.msg} | " + " | ".join(diags))
 
 

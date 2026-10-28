@@ -10,6 +10,8 @@ pipeline {
     }
 
     environment {
+        // Site under test: change to 'https://stage.massistcrm.com' to run against stage
+        DMS_BASE_URL = 'https://admin.massistcrm.com'
         // Headed Chrome on a virtual screen (Xvfb): the menu navigation in this project fails headless.
         HEADLESS = 'false'
     }
