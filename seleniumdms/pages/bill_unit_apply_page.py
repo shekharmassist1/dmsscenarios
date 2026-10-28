@@ -127,6 +127,14 @@ class BillUnitApplyPage(ProductPage):
         if not buttons:
             return {"found": False, "visible": False, "enabled": False, "details": "no Apply button in the popup"}
         btn = buttons[0]
+        end = time.time() + 3
+        while time.time() < end:
+            try:
+                if float(self.driver.execute_script("return getComputedStyle(arguments[0]).opacity", box)) >= 0.99:
+                    break
+            except Exception:
+                break
+            time.sleep(0.2)
         visible = btn.is_displayed()
         chain = self.driver.execute_script(
             """
@@ -159,7 +167,9 @@ class BillUnitApplyPage(ProductPage):
                 reasons.append(f"{node['tag']} pointer-events:none")
             if node["cursor"] == "not-allowed":
                 reasons.append(f"{node['tag']} cursor:not-allowed")
-            if node["opacity"] is not None and node["opacity"] < 0.99:
+            # The popup box itself fades in (opacity 0 -> 1) when it opens: that is animation, not a
+            # disabled state, so its own opacity is ignored (the buttons container's 0.5 still counts).
+            if node["opacity"] is not None and node["opacity"] < 0.99 and "jconfirm-box" not in node["cls"]:
                 reasons.append(f"{node['tag']} opacity {node['opacity']}")
         enabled = visible and btn.is_enabled() and not reasons
         details = (f"visible={visible} is_enabled={btn.is_enabled()} "
