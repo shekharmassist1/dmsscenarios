@@ -35,7 +35,7 @@ def logged_in_driver():
         drv = _build_driver()
         try:
             LoginPage(drv).open().login(USERNAME, PASSWORD)
-        except (TimeoutException, WebDriverException) as exc:
+        except (TimeoutException, WebDriverException, AssertionError) as exc:
 
             last_exc = exc
             drv.quit()
