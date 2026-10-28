@@ -11,16 +11,16 @@ pipeline {
 
     environment {
         // Site under test: change to 'https://stage.massistcrm.com' to run against stage
-        DMS_BASE_URL = 'https://admin.massistcrm.com'
-        // Test customers (each parallel group uses its own). admin: Demo Dealer 2/3/4
-        DMS_CUSTOMER_2 = 'Demo Dealer 2'
-        DMS_CUSTOMER_3 = 'Demo Dealer 3'
-        DMS_CUSTOMER_4 = 'Demo Dealer 4'
+        DMS_BASE_URL = 'https://stage.massistcrm.com'
+        // Test customers (each parallel group uses its own). admin: Demo Dealer 2/3/4; stage: below
+        DMS_CUSTOMER_2 = 'Demo Test 1'
+        DMS_CUSTOMER_3 = 'Demo Asset'
+        DMS_CUSTOMER_4 = 'Pravesh'
         DMS_COMPANY_NAME = 'Demo Distributor 1'
-        DB_SERVER = '172.31.62.165'
-        DB_NAME   = 'MA_Live'
+        DB_SERVER = '10.0.2.134'
+        DB_NAME   = 'Ma_Live'
         // Jenkins credential with the DB login: 'dms-db' (admin DB) / 'dms-db-stage' (stage DB)
-        DB_CREDENTIALS_ID = 'dms-db'
+        DB_CREDENTIALS_ID = 'dms-db-stage'
         // Headed Chrome on a virtual screen (Xvfb): the menu navigation in this project fails headless.
         HEADLESS = 'false'
     }
