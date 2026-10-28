@@ -98,7 +98,20 @@ class BillBatchPage(BillUnitApplyPage):
         batches with stock >= min_stock. Returns (row_index, product_info, [batch labels]).
         If product_search is given, the grid is filtered to that product first (much faster)."""
         if product_search:
-            self.search_product(product_search)
+            try:
+                self.search_product(product_search)
+            except Exception:
+                # The preferred product does not exist on this site (e.g. an admin product on stage):
+                # clear the search and scan the grid instead.
+                try:
+                    box = self.find(self.PRODUCT_SEARCH_INPUT)
+                    box.clear()
+                    box.send_keys(" ")
+                    box.send_keys(Keys.BACKSPACE)
+                    time.sleep(2)
+                except Exception:
+                    pass
+                product_search = None
 
         def _scan(limit):
             for i in range(min(len(self.find_all(self.PRODUCT_ROWS)), limit)):

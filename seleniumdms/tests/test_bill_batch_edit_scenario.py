@@ -1,3 +1,4 @@
+import os
 """Bill/New Invoice: an item's quantity is split across two batches -> Save -> Add Sale -> Proceed ->
 My Sales -> Action -> Edit. The Edit Sale page must show the SAME batches with the SAME quantities;
 if the batches differ, that is a bug."""
@@ -17,7 +18,9 @@ pytestmark = pytest.mark.xdist_group(name="dd3")  # parallel runs: one group per
 QTY_PER_BATCH = 1
 # Optional: name (or part of the name) of a product that has 2+ batches with stock, e.g. "Vanilla Cup".
 # Leave empty to let the test search the grid for one (slower: it opens each row's batch popup).
-BATCH_PRODUCT_SEARCH = "Red Velvet Badabite Candy [1*8] 80ML"   # 2 batches: OB and 001PPO0
+# Preferred product with 2+ batches (admin: Red Velvet Badabite, batches OB and 001PPO0). If it is not on
+# the site under test, the page scans the grid for any product with two batches instead.
+BATCH_PRODUCT_SEARCH = os.environ.get("DMS_BATCH_PRODUCT", "Red Velvet Badabite Candy [1*8] 80ML")
 
 
 def _num(value):
